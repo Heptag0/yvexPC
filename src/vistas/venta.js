@@ -2,9 +2,11 @@
 // Layout del plano: carrito a la izquierda, acceso rápido a la derecha,
 // COBRAR como el botón más grande. Operable con teclado y lector de barras.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { pesos, escapar } from "../util/formato.js";
 import { icono } from "../util/iconos.js";
+import { svgIconoDepto, packDeConfig } from "../util/iconos-depto.js";
+import { tomarCotizacionPendiente } from "../util/handoff.js";
 import { montarAlertaNegativos } from "../util/alertaNegativos.js";
 import { verTicket } from "./ticket.js";
 import { lineaVida } from "../util/sidebar.js";
@@ -23,6 +25,8 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
   let descuentoGlobal = 0; // centavos
   let bipId = null; // producto recién agregado: su línea emite la onda de marca
   let favoritos = [];
+  let categorias = []; // solo para pintar el icono de departamento en favoritos
+  let pack = "trazo";
   // --- Lealtad ---
   // clienteLealtad: cliente asignado para puntos (escaneando su QR o buscándolo).
   // canje: descuento por puntos ya confirmado en pantalla {puntos_solicitados,
@@ -30,6 +34,9 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
   // manual (un solo descuento global por venta, como lo calcula Rust).
   let clienteLealtad = null;
   let canje = null;
+  // Si esta venta viene de convertir una cotización, aquí queda su id hasta
+  // que el cobro tenga éxito — entonces se marca la cotización "convertida".
+  let cotizacionIdEnCurso = null;
   let reglasLealtad = null; // cache para ofrecer (o no) el canje
   // Refresco de la alerta de stock negativo (se asigna al montarla).
   let refrescarAlertaNeg = null;
@@ -140,6 +147,49 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
     } catch (e) {
       console.error("No se pudo crear ticket:", e);
     }
+  }
+
+  // Convierte una cotización en el ticket activo: abre un ticket nuevo y
+  // limpio (reusa exactamente el mismo camino que "+ Ticket"), y carga sus
+  // líneas con el precio QUE SE COTIZÓ (aunque el catálogo haya cambiado
+  // desde entonces — cotizar es prometer un precio). Sin validar stock: si
+  // algo ya no alcanza, el cajero lo ve y ajusta a mano en el carrito, igual
+  // que con cualquier otra venta.
+  async function precargarDesdeCotizacion(cot) {
+    await crearTicketNuevo(true);
+    carrito = cot.lineas.map((l) => ({
+      producto: {
+        id: l.producto_id || `cot-${l.id}`,
+        nombre: l.descripcion,
+        precio_venta_centavos: l.precio_unitario_centavos,
+        unidad: "pieza",
+        controla_stock: false,
+        stock: 0,
+        es_kit: false,
+        categoria_id: null,
+      },
+      cantidad: l.cantidad,
+      descuento_centavos: l.descuento_linea_centavos || 0,
+    }));
+    descuentoGlobal = cot.descuento_centavos || 0;
+    cotizacionIdEnCurso = cot.id;
+    renderCarrito();
+    autoguardar();
+    mostrarToast(`Cotización #${cot.folio} cargada — cobra normal para convertirla en venta.`);
+  }
+
+  function mostrarToast(msg) {
+    let toast = wrap.querySelector("#venta-toast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "venta-toast";
+      toast.className = "venta-toast";
+      wrap.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add("venta-toast--visible");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toast.classList.remove("venta-toast--visible"), 3200);
   }
 
   // Cambia al ticket indicado (guarda el actual, carga el nuevo).
@@ -338,7 +388,10 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
     if (typeof alSalir === "function") alSalir();
   };
 
-  iniciarTickets();
+  iniciarTickets().then(() => {
+    const cot = tomarCotizacionPendiente();
+    if (cot) precargarDesdeCotizacion(cot);
+  });
 
   function pintar() {
     wrap.innerHTML = `
@@ -441,6 +494,17 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
       renderFavoritos();
     } catch (e) {
       favoritos = [];
+    }
+    // Categorías y pack: solo para el icono de departamento de cada
+    // favorito. Si falla, los favoritos se siguen viendo bien sin icono.
+    try {
+      [categorias, pack] = await Promise.all([
+        invoke("cat_listar"),
+        invoke("config_leer_todo").then(packDeConfig),
+      ]);
+      renderFavoritos();
+    } catch (e) {
+      categorias = [];
     }
   }
 
@@ -567,6 +631,10 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
     setTimeout(() => input.focus(), 50);
   }
 
+  function categoriaDe(id) {
+    return categorias.find((c) => c.id === id) || null;
+  }
+
   function renderFavoritos() {
     const cont = wrap.querySelector("#venta-favs");
     if (!cont) return;
@@ -575,13 +643,19 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
       return;
     }
     cont.innerHTML = favoritos
-      .map(
-        (p) => `
+      .map((p) => {
+        const cat = categoriaDe(p.categoria_id);
+        const color = (cat && cat.color) || "var(--texto-debil)";
+        const visual = p.imagen_ruta
+          ? `<img class="fav-foto" src="${convertFileSrc(p.imagen_ruta)}" alt="" />`
+          : `<span class="fav-depto-ico" style="background:${color}22;color:${color}">${svgIconoDepto(cat && cat.icono, (cat && cat.nombre) || p.nombre, { pack, size: 15 })}</span>`;
+        return `
       <button class="fav-card" data-id="${p.id}">
+        ${visual}
         <span class="fav-nombre">${escapar(p.nombre)}</span>
         <span class="fav-precio num">${pesos(p.precio_venta_centavos)}</span>
-      </button>`
-      )
+      </button>`;
+      })
       .join("");
     cont.querySelectorAll(".fav-card").forEach((b) =>
       b.addEventListener("click", async () => {
@@ -1453,6 +1527,17 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
   }
 
   function mostrarTicketExito(res) {
+    // Si esta venta vino de una cotización, la cerramos como "convertida".
+    // Best-effort: si falla, la venta YA está hecha — no vale la pena
+    // interrumpir el flujo de cobro por esto.
+    if (cotizacionIdEnCurso) {
+      const ventaId = res.venta_id || res.id || null;
+      if (ventaId) {
+        invoke("cot_marcar_convertida", { id: cotizacionIdEnCurso, ventaId })
+          .catch((e) => console.error("No se pudo marcar la cotización como convertida:", e));
+      }
+      cotizacionIdEnCurso = null;
+    }
     const cambio = res.cambio_centavos || 0;
     const html = `
       <div class="exito exito--v2 exito--auto">

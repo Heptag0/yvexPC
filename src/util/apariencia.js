@@ -1,8 +1,8 @@
 // YvexPOS — apariencia: aplica la personalización del dueño al programa.
 // -----------------------------------------------------------------------------
 // El tema/acento/densidad/forma viven en la config de SQLite con las claves:
-//   apariencia_tema      → "nocturno" | "amanecer" | "brisa"
-//   apariencia_acento    → id de ACENTOS ("morado", "turquesa", …)
+//   apariencia_tema      → "nocturno" | "grafito" | "aurora" | "alba" | "duna" | "contraste"
+//   apariencia_acento    → id de ACENTOS ("violeta", "turquesa", …)
 //   apariencia_densidad  → "comoda" | "compacta"
 //   apariencia_forma     → "suave" | "recta"
 //
@@ -12,25 +12,60 @@
 // REGLA QUE LA PERSONALIZACIÓN NO PUEDE ROMPER: cada acento trae dos
 // versiones curadas (tema oscuro / temas claros) y el texto sobre el acento
 // se elige por contraste WCAG calculado. YvexPOS no se puede desconfigurar.
+//
+// PARIDAD CON EL MÓVIL: los ids y nombres de acento son los MISMOS en ambas
+// plataformas (Amatista, Laguna, Miel…), para que un dueño con las dos
+// versiones vea un solo catálogo. El PC conserva su ventaja propia: dos
+// versiones por acento (oscuro/claro) en vez de una sola.
 
-export const TEMAS = ["nocturno", "amanecer", "brisa"];
+export const TEMAS = ["nocturno", "grafito", "aurora", "alba", "duna", "contraste"];
 
-/// Acentos curados. `oscuro` para Nocturno; `claro` (más profundo) para
-/// Amanecer/Brisa. Ambas versiones garantizan contraste sobre sus fondos.
+/// Metadatos de cada tema para los selectores (onboarding y Configuración).
+/// `esClaro` decide qué versión del acento se usa.
+export const TEMAS_INFO = {
+  nocturno:  { nombre: "Nocturno",  alma: "Violeta profundo · el clásico",   esClaro: false },
+  grafito:   { nombre: "Grafito",   alma: "Negro puro · máximo enfoque",     esClaro: false },
+  aurora:    { nombre: "Aurora",    alma: "Índigo profundo · el más premium", esClaro: false },
+  alba:      { nombre: "Alba",      alma: "Claro y limpio",                  esClaro: true  },
+  duna:      { nombre: "Duna",      alma: "Crema cálido · suave a la vista", esClaro: true  },
+  contraste: { nombre: "Mediodía",  alma: "Alto contraste · a plena luz",    esClaro: true  },
+};
+
+/// Temas que existían antes de la unificación con el móvil. Se traducen al
+/// vuelo para que a nadie se le resetee lo que ya había elegido.
+const TEMAS_HEREDADOS = {
+  amanecer: "duna",  // era "claro y cálido"  → el cálido ahora es Duna
+  brisa: "alba",     // era "claro y suave"   → el limpio ahora es Alba
+};
+
+/// Acentos curados. `oscuro` para temas oscuros; `claro` (más profundo) para
+/// los claros. Ambas versiones garantizan contraste sobre sus fondos.
+/// Los ids y nombres coinciden con los del móvil (src/base/apariencia.ts).
 export const ACENTOS = [
-  { id: "morado",   nombre: "Morado Yvex", oscuro: "#8b5cf6", claro: "#7c3aed" },
-  { id: "turquesa", nombre: "Turquesa",    oscuro: "#2dd4bf", claro: "#0f766e" },
-  { id: "azul",     nombre: "Azul",        oscuro: "#60a5fa", claro: "#2563eb" },
-  { id: "verde",    nombre: "Verde",       oscuro: "#34d399", claro: "#0d9d6f" },
-  { id: "ambar",    nombre: "Ámbar",       oscuro: "#fbbf24", claro: "#b45309" },
-  { id: "coral",    nombre: "Coral",       oscuro: "#fb7185", claro: "#be123c" },
-  { id: "rosa",     nombre: "Rosa",        oscuro: "#e879f9", claro: "#a21caf" },
-  { id: "grafito",  nombre: "Grafito",     oscuro: "#a7a9c4", claro: "#4b4d63" },
+  { id: "violeta",   nombre: "Amatista",   oscuro: "#8b5cf6", claro: "#7c3aed" },
+  { id: "turquesa",  nombre: "Laguna",     oscuro: "#2dd4bf", claro: "#0f766e" },
+  { id: "ambar",     nombre: "Miel",       oscuro: "#f59e0b", claro: "#b45309" },
+  { id: "esmeralda", nombre: "Jade",       oscuro: "#34d399", claro: "#0d9d6f" },
+  { id: "indigo",    nombre: "Zafiro",     oscuro: "#6366f1", claro: "#4338ca" },
+  { id: "rosa",      nombre: "Bugambilia", oscuro: "#ec4899", claro: "#be185d" },
+  { id: "perla",     nombre: "Perla",      oscuro: "#dcdde3", claro: "#6b7280" },
+  { id: "carbon",    nombre: "Carbón",     oscuro: "#a7a9c4", claro: "#4b4d63" },
+  // Exclusivo del PC por ahora (el móvil no lo tiene todavía). Se conserva
+  // porque hay usuarios que ya lo eligieron; no se pierde nada.
+  { id: "coral",     nombre: "Coral",      oscuro: "#fb7185", claro: "#be123c" },
 ];
+
+/// Acentos que existían antes de unificar los ids con el móvil.
+const ACENTOS_HEREDADOS = {
+  morado: "violeta",
+  azul: "indigo",
+  verde: "esmeralda",
+  grafito: "carbon",
+};
 
 const PREDETERMINADA = {
   apariencia_tema: "nocturno",
-  apariencia_acento: "morado",
+  apariencia_acento: "violeta",
   apariencia_densidad: "comoda",
   apariencia_forma: "suave",
 };
@@ -41,16 +76,35 @@ export function valorApariencia(cfg, clave) {
   return v !== undefined && v !== "" ? v : PREDETERMINADA[clave];
 }
 
+/// Traduce un tema guardado (posiblemente con nombre viejo) al vigente.
+export function normalizarTema(id) {
+  const t = TEMAS_HEREDADOS[id] || id;
+  return TEMAS.includes(t) ? t : "nocturno";
+}
+
+/// Traduce un acento guardado (posiblemente con id viejo) al vigente.
+export function normalizarAcento(id) {
+  const a = ACENTOS_HEREDADOS[id] || id;
+  return ACENTOS.some((x) => x.id === a) ? a : "violeta";
+}
+
+/// ¿El tema es de fondo claro? (decide qué versión del acento usar)
+export function temaEsClaro(tema) {
+  const info = TEMAS_INFO[normalizarTema(tema)];
+  return info ? info.esClaro : false;
+}
+
 /// Hex del acento para el tema dado (los swatches del selector la usan).
 export function hexAcento(acentoId, tema) {
-  const a = ACENTOS.find((x) => x.id === acentoId) || ACENTOS[0];
-  return tema === "nocturno" ? a.oscuro : a.claro;
+  const id = normalizarAcento(acentoId);
+  const a = ACENTOS.find((x) => x.id === id) || ACENTOS[0];
+  return temaEsClaro(tema) ? a.claro : a.oscuro;
 }
 
 /// Aplica la apariencia completa al documento. Tolera cfg vacío/nulo.
 export function aplicarApariencia(cfg) {
-  const tema = validar(valorApariencia(cfg, "apariencia_tema"), TEMAS, "nocturno");
-  const acento = valorApariencia(cfg, "apariencia_acento");
+  const tema = normalizarTema(valorApariencia(cfg, "apariencia_tema"));
+  const acento = normalizarAcento(valorApariencia(cfg, "apariencia_acento"));
   const densidad = validar(valorApariencia(cfg, "apariencia_densidad"), ["comoda", "compacta"], "comoda");
   const forma = validar(valorApariencia(cfg, "apariencia_forma"), ["suave", "recta"], "suave");
 
@@ -63,9 +117,11 @@ export function aplicarApariencia(cfg) {
 
 /// Inyecta el acento (y sus derivados) encima del tema activo.
 export function aplicarAcento(acentoId, tema) {
-  const hex = hexAcento(acentoId, tema);
+  const id = normalizarAcento(acentoId);
+  const temaOk = normalizarTema(tema);
+  const hex = hexAcento(id, temaOk);
   const raiz = document.documentElement.style;
-  if (acentoId === "morado") {
+  if (id === "violeta") {
     // El predeterminado ya vive en los tokens del tema: limpiar overrides
     // para que gobierne el CSS (incluye matices finos por tema).
     ["--acento", "--acento-suave", "--acento-borde", "--acento-texto"].forEach((t) =>
@@ -74,7 +130,7 @@ export function aplicarAcento(acentoId, tema) {
     return;
   }
   raiz.setProperty("--acento", hex);
-  raiz.setProperty("--acento-suave", conAlfa(hex, tema === "nocturno" ? 0.14 : 0.1));
+  raiz.setProperty("--acento-suave", conAlfa(hex, temaEsClaro(temaOk) ? 0.1 : 0.14));
   raiz.setProperty("--acento-borde", conAlfa(hex, 0.4));
   raiz.setProperty("--acento-texto", textoSobre(hex));
 }

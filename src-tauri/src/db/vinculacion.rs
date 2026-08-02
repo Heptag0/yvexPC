@@ -191,6 +191,7 @@ struct VincularDirectoResp {
     dispositivo_id: String,
     token: String,
     negocio_id: String,
+    #[allow(dead_code)] // el backend lo manda; el PC aún no lo usa en el ticket
     prefijo_folio: String,
 }
 

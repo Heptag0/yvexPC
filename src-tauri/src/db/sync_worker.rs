@@ -59,6 +59,7 @@ pub enum SenalSync {
     /// Sincroniza ahora mismo (se manda tras cada venta).
     Ahora,
     /// Termina el hilo (al cerrar la app).
+    #[allow(dead_code)] // reservado para cuando se necesite apagar el hilo de sync limpiamente
     Detener,
 }
 

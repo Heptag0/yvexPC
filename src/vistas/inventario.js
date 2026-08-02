@@ -3,9 +3,10 @@
 // gestión de categorías y ajuste de stock con rastro.
 // El cajero no ve columna de costo (el backend tampoco se lo manda).
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { pesos, centavos, escapar } from "../util/formato.js";
 import { icono } from "../util/iconos.js";
+import { ICONOS_DEPTO, svgIconoDepto, packDeConfig } from "../util/iconos-depto.js";
 
 export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
   const esCajero = sesion.rol === "cajero";
@@ -26,6 +27,7 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
   let soloNegativos = filtroInicial === "negativos";
   let filtroCategoria = ""; // "" = todas
   let modoEliminar = false;
+  let pack = "trazo"; // pack de estilo de icono de departamento (Apariencia)
   const seleccionados = new Set();
 
   pintarEsqueleto();
@@ -221,6 +223,11 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
     } catch (e) {
       categorias = [];
     }
+    try {
+      pack = packDeConfig(await invoke("config_leer_todo"));
+    } catch (e) {
+      pack = "trazo";
+    }
     // Poblar el filtro de categorías.
     const sel = wrap.querySelector("#inv-cat-filtro");
     if (sel) {
@@ -334,6 +341,11 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
     return c && c.color ? c.color : "var(--texto-debil)";
   }
 
+  function iconoCategoria(id) {
+    const c = categorias.find((x) => x.id === id);
+    return c ? c.icono : null;
+  }
+
   function filaProducto(p) {
     const negativo = p.controla_stock && !p.es_kit && p.stock < 0;
     const bajo = p.controla_stock && !negativo && p.stock <= p.stock_minimo;
@@ -366,12 +378,21 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
           </div>
         </td>`;
     const dep = p.categoria_id ? nombreCategoria(p.categoria_id) : "Sin departamento";
+    const color = colorCategoria(p.categoria_id);
+    const iconoCat = iconoCategoria(p.categoria_id);
+    // Jerarquía visual (igual que el móvil): foto propia → icono del
+    // departamento → punto de color liso si no hay ninguno de los dos.
+    const visual = p.imagen_ruta
+      ? `<img class="inv-dep-foto" src="${convertFileSrc(p.imagen_ruta)}" alt="" />`
+      : iconoCat
+        ? `<span class="inv-dep-ico" style="background:${color}22;color:${color}">${svgIconoDepto(iconoCat, dep, { pack, size: 13 })}</span>`
+        : `<span class="inv-dep-dot" style="background:${color}"></span>`;
     return `
       <tr class="${modoEliminar && seleccionados.has(p.id) ? "inv-fila-sel" : ""}">
         ${celdaCheck}
         <td class="inv-nombre-cel">
           <div class="inv-prod">
-            <span class="inv-dep-dot" style="background:${colorCategoria(p.categoria_id)}"></span>
+            ${visual}
             <div class="inv-prod-txt">
               <div class="inv-prod-nombre">
                 ${p.favorito ? '<span class="inv-fav" title="Favorito">★</span>' : ""}
@@ -405,16 +426,34 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
     const precioInicial = prod ? centavos(prod.precio_venta_centavos) : "";
     const costoInicial = prod && prod.costo_centavos ? centavos(prod.costo_centavos) : "";
     const mayoreoInicial = prod && prod.precio_mayoreo_centavos ? centavos(prod.precio_mayoreo_centavos) : "";
+    let imagenRuta = prod ? prod.imagen_ruta || null : null;
+    // Cada foto que se copia a disco durante esta sesión del modal (aunque
+    // el usuario cambie de opinión varias veces antes de guardar). Al
+    // cerrar el modal — cancelando o guardando — se borra toda copia que
+    // NO haya quedado como la foto final, para no dejar huérfanos.
+    const copiasSesion = [];
 
     const html = `
       <h2>${esEdicion ? "Editar producto" : "Nuevo producto"}</h2>
+      <div class="m-foto-zona">
+        <div class="m-foto-preview" id="m-foto-preview">
+          ${imagenRuta ? `<img src="${convertFileSrc(imagenRuta)}" alt="" />` : '<span class="m-foto-vacio">Sin foto</span>'}
+        </div>
+        <div class="m-foto-btns">
+          <button type="button" class="btn-sec" id="m-foto-elegir">Seleccionar imagen…</button>
+          <button type="button" class="btn-sec" id="m-foto-recorte" hidden>Quitar fondo</button>
+          <button type="button" class="btn-mini btn-mini--peligro" id="m-foto-quitar" ${imagenRuta ? "" : "hidden"}>Quitar foto</button>
+          <span class="m-hint">JPG, PNG o WEBP. Si no le pones foto, se ve el icono del departamento.</span>
+        </div>
+      </div>
+      <div id="m-foto-catalogo" class="m-foto-catalogo" hidden></div>
       <div class="m-grid">
         <label class="m-col2">Nombre
           <input id="m-nombre" value="${prod ? escapar(prod.nombre) : ""}" />
         </label>
         <label>Código de barras
           <input id="m-codigo" value="${prod && prod.codigo_barras ? escapar(prod.codigo_barras) : ""}" placeholder="Opcional" style="text-transform:uppercase" />
-          <span class="m-hint">Recomendado: agiliza la venta al escanear o teclear.</span>
+          <span class="m-hint">Recomendado: agiliza la venta al escanear o teclear. Si es un producto conocido, buscamos su foto solo.</span>
         </label>
         <label>Departamento
           <select id="m-cat">${opcionesCat}</select>
@@ -799,7 +838,22 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
       if (esEdicion) desdePrecio();
     }
 
-    $("#m-cancelar").addEventListener("click", cerrarModal);
+    // Borra (mejor esfuerzo, sin bloquear la UI) toda copia de esta sesión
+    // que no haya quedado como la foto final. `final_` = la que sí se usó
+    // (o null si no se guardó ninguna, ej. al cancelar).
+    function limpiarCopiasHuerfanas(final_) {
+      for (const ruta of copiasSesion) {
+        if (ruta !== final_) {
+          invoke("prod_borrar_imagen", { ruta }).catch(() => {});
+        }
+      }
+    }
+
+    $("#m-cancelar").addEventListener("click", () => {
+      // Nada se guardó: TODAS las copias de esta sesión quedaron huérfanas.
+      limpiarCopiasHuerfanas(null);
+      cerrarModal();
+    });
     if (esEdicion) {
       $("#m-eliminar").addEventListener("click", async () => {
         if (!(await confirmar("¿Eliminar este producto?", "El producto dejará de aparecer, pero el histórico de ventas se conserva."))) return;
@@ -812,6 +866,116 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
         }
       });
     }
+
+    $("#m-foto-elegir").addEventListener("click", async () => {
+      try {
+        const dialog = await import("@tauri-apps/plugin-dialog");
+        const ruta = await dialog.open({
+          multiple: false,
+          filters: [{ name: "Imagen", extensions: ["jpg", "jpeg", "png", "webp"] }],
+        });
+        if (!ruta) return; // canceló
+        const err = $("#m-error");
+        err.textContent = "";
+        const nueva = await invoke("prod_guardar_imagen", { rutaOrigen: ruta });
+        copiasSesion.push(nueva);
+        imagenRuta = nueva;
+        $("#m-foto-preview").innerHTML = `<img src="${convertFileSrc(imagenRuta)}" alt="" />`;
+        $("#m-foto-quitar").hidden = false;
+        $("#m-foto-catalogo").hidden = true;
+        actualizarBotonRecorte();
+      } catch (e) {
+        $("#m-error").textContent = String(e);
+      }
+    });
+    $("#m-foto-quitar").addEventListener("click", () => {
+      imagenRuta = null;
+      $("#m-foto-preview").innerHTML = '<span class="m-foto-vacio">Sin foto</span>';
+      $("#m-foto-quitar").hidden = true;
+      actualizarBotonRecorte();
+    });
+
+    // -------------------------------------------- Catálogo abierto + recorte
+    // ¿El servidor puede quitar fondos? Se consulta UNA vez al abrir el
+    // modal, para no ofrecer un botón que va a fallar.
+    let hayRecorte = false;
+    invoke("prod_recorte_disponible").then((v) => {
+      hayRecorte = !!v;
+      actualizarBotonRecorte();
+    }).catch(() => { hayRecorte = false; });
+
+    function actualizarBotonRecorte() {
+      $("#m-foto-recorte").hidden = !(hayRecorte && imagenRuta);
+    }
+
+    $("#m-foto-recorte").addEventListener("click", async () => {
+      if (!imagenRuta) return;
+      const err = $("#m-error");
+      err.textContent = "";
+      const btn = $("#m-foto-recorte");
+      const textoOriginal = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Quitando fondo…";
+      try {
+        const nueva = await invoke("prod_quitar_fondo", { rutaLocal: imagenRuta });
+        copiasSesion.push(nueva);
+        imagenRuta = nueva;
+        $("#m-foto-preview").innerHTML = `<img src="${convertFileSrc(imagenRuta)}" alt="" />`;
+      } catch (e) {
+        err.textContent = String(e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = textoOriginal;
+      }
+    });
+
+    // Si el producto es conocido, se ofrece su foto — nunca se aplica sola.
+    // Búsqueda con debounce mientras se escribe/pega el código, y también al
+    // salir del campo (por si se autocompletó con el lector de código).
+    let temporizadorBusqueda = null;
+    async function buscarEnCatalogo() {
+      const codigo = $("#m-codigo").value.trim();
+      $("#m-foto-catalogo").hidden = true;
+      if (imagenRuta || !codigo || codigo.length < 8) return;
+      let ficha;
+      try {
+        ficha = await invoke("prod_buscar_foto_catalogo", { codigoBarras: codigo });
+      } catch (e) {
+        return; // best-effort: nunca interrumpe el alta del producto
+      }
+      if (!ficha || !ficha.url || imagenRuta) return; // pudo haber cambiado mientras tanto
+      const zona = $("#m-foto-catalogo");
+      zona.hidden = false;
+      zona.innerHTML = `
+        <button type="button" class="m-foto-catalogo-btn" id="m-usar-catalogo">
+          <img src="${escapar(ficha.url)}" alt="" />
+          <span>
+            <b>Encontramos una foto de este producto</b>
+            <span class="m-hint">${escapar(ficha.nombre || ficha.marca || "Toca para usarla")}</span>
+          </span>
+        </button>`;
+      $("#m-usar-catalogo").addEventListener("click", async () => {
+        const err = $("#m-error");
+        err.textContent = "";
+        try {
+          const nueva = await invoke("prod_descargar_foto_catalogo", { url: ficha.url });
+          copiasSesion.push(nueva);
+          imagenRuta = nueva;
+          $("#m-foto-preview").innerHTML = `<img src="${convertFileSrc(imagenRuta)}" alt="" />`;
+          $("#m-foto-quitar").hidden = false;
+          zona.hidden = true;
+          actualizarBotonRecorte();
+        } catch (e) {
+          err.textContent = "No se pudo descargar la foto. Elige una tú.";
+        }
+      });
+    }
+    $("#m-codigo").addEventListener("input", () => {
+      clearTimeout(temporizadorBusqueda);
+      temporizadorBusqueda = setTimeout(buscarEnCatalogo, 600);
+    });
+    $("#m-codigo").addEventListener("blur", buscarEnCatalogo);
+    if (!esEdicion && $("#m-codigo").value.trim()) buscarEnCatalogo();
 
     $("#m-guardar").addEventListener("click", async () => {
       const err = $("#m-error");
@@ -855,6 +1019,7 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
         unidad,
         stock_minimo: esKit ? 0 : (parseFloat($("#m-min").value) || 0),
         favorito: $("#m-fav").checked,
+        imagen_ruta: imagenRuta,
         es_kit: esKit,
         componentes: esKit
           ? kitComponentes.map((c) => ({ producto_id: c.producto_id, cantidad: c.cantidad }))
@@ -869,6 +1034,9 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
             datos: { ...base, stock_inicial: esKit ? 0 : (parseFloat($("#m-stock-ini")?.value) || 0) },
           });
         }
+        // Se guardó bien: cualquier copia de esta sesión que NO haya sido
+        // la elegida al final (probaste otra foto antes) queda huérfana.
+        limpiarCopiasHuerfanas(imagenRuta);
         cerrarModal();
         await cargarTodo();
       } catch (e) {
@@ -984,7 +1152,7 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
                 (c) => `
             <li class="depto-fila" draggable="true" data-id="${c.id}">
               <span class="depto-asa" aria-label="Arrastrar para reordenar">${icono("asa")}</span>
-              <span class="cat-color" style="background:${c.color || "var(--acento)"}"></span>
+              <span class="cat-icono" style="background:${(c.color || "var(--acento)")}22;color:${c.color || "var(--acento)"}">${svgIconoDepto(c.icono, c.nombre, { pack, size: 16 })}</span>
               <span class="cat-nombre">${escapar(c.nombre)}</span>
               <button class="btn-mini" data-cat-edit="${c.id}">Editar</button>
               <button class="btn-mini btn-mini--peligro" data-cat-del="${c.id}">Quitar</button>
@@ -1079,13 +1247,18 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
       }
     }
 
-    // Ventana propia para crear/editar un departamento (nombre + color).
+    // Ventana propia para crear/editar un departamento (nombre + color + icono).
     function abrirEditorDepto(depto) {
       const esEdicion = !!depto;
       const colorActual = (depto && depto.color) || PALETA_DEPTO[0];
+      const iconoActual = (depto && depto.icono) || null;
       const swatches = PALETA_DEPTO.map(
         (col) => `<button type="button" class="depto-swatch ${col === colorActual ? "depto-swatch--activo" : ""}" data-color="${col}" style="background:${col}" aria-label="Color ${col}"></button>`
       ).join("");
+      const iconosBtns = [{ id: null, nombre: "Sin icono" }, ...ICONOS_DEPTO].map((ic) => `
+        <button type="button" class="depto-icono-op ${ic.id === iconoActual ? "depto-icono-op--activo" : ""}" data-icono="${ic.id ?? ""}" title="${ic.nombre}">
+          ${ic.id ? svgIconoDepto(ic.id, ic.nombre, { pack, size: 18 }) : '<span class="depto-icono-x">—</span>'}
+        </button>`).join("");
       const html = `
         <h2>${esEdicion ? "Editar departamento" : "Nuevo departamento"}</h2>
         <label class="depto-campo">Nombre
@@ -1093,6 +1266,8 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
         </label>
         <div class="depto-color-label">Color</div>
         <div class="depto-paleta" id="depto-paleta">${swatches}</div>
+        <div class="depto-color-label">Icono <span class="m-sub" style="font-weight:400">(opcional)</span></div>
+        <div class="depto-iconos" id="depto-iconos">${iconosBtns}</div>
         <p class="m-error" id="depto-error"></p>
         <div class="m-acciones">
           <span></span>
@@ -1105,12 +1280,20 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
       const modal = abrirModal(html, true);
       const $ = (s) => modal.querySelector(s);
       let colorElegido = colorActual;
+      let iconoElegido = iconoActual;
 
       modal.querySelectorAll(".depto-swatch").forEach((sw) =>
         sw.addEventListener("click", () => {
           colorElegido = sw.dataset.color;
           modal.querySelectorAll(".depto-swatch").forEach((s) => s.classList.remove("depto-swatch--activo"));
           sw.classList.add("depto-swatch--activo");
+        })
+      );
+      modal.querySelectorAll(".depto-icono-op").forEach((b) =>
+        b.addEventListener("click", () => {
+          iconoElegido = b.dataset.icono || null;
+          modal.querySelectorAll(".depto-icono-op").forEach((x) => x.classList.remove("depto-icono-op--activo"));
+          b.classList.add("depto-icono-op--activo");
         })
       );
 
@@ -1126,9 +1309,9 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
         if (!nombre) return ($("#depto-error").textContent = "Escribe un nombre.");
         try {
           if (esEdicion) {
-            await invoke("cat_editar", { datos: { id: depto.id, nombre, color: colorElegido, orden: depto.orden } });
+            await invoke("cat_editar", { datos: { id: depto.id, nombre, color: colorElegido, orden: depto.orden, icono: iconoElegido } });
           } else {
-            await invoke("cat_crear", { datos: { nombre, color: colorElegido, orden: categorias.length } });
+            await invoke("cat_crear", { datos: { nombre, color: colorElegido, orden: categorias.length, icono: iconoElegido } });
           }
           categorias = await invoke("cat_listar");
           cerrarModal();

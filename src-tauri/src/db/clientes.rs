@@ -179,6 +179,7 @@ pub fn crear(con: &Connection, dispositivo_id: &str, d: &NuevoCliente) -> Result
     let payload = serde_json::json!({
         "id": id, "nombre": nombre, "telefono": tel, "notas": notas,
         "limite_credito_centavos": d.limite_credito_centavos, "saldo_centavos": 0,
+        "correo": correo, "codigo": codigo,
         "creado_en": ts, "actualizado_en": ts, "eliminado": 0, "dispositivo_id": dispositivo_id,
     });
     encolar_sync(con, "clientes", &id, "insert", &payload)
@@ -228,7 +229,8 @@ pub fn editar(con: &Connection, d: &EditarCliente) -> Result<(), String> {
 
     let payload = serde_json::json!({
         "id": d.id, "nombre": nombre, "telefono": tel, "notas": notas,
-        "limite_credito_centavos": d.limite_credito_centavos, "actualizado_en": ts,
+        "limite_credito_centavos": d.limite_credito_centavos, "correo": correo,
+        "actualizado_en": ts,
     });
     encolar_sync(con, "clientes", &d.id, "update", &payload)
         .map_err(|e| format!("error al encolar cliente: {e}"))?;

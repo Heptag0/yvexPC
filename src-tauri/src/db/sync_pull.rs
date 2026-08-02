@@ -62,6 +62,22 @@ struct Pagina {
     /// Cajeros de otras cajas (sin PIN), para etiquetar ventas con nombre real.
     #[serde(default)]
     usuarios: Vec<Value>,
+    /// Clientes del negocio (compartidos). `puntos` YA viene calculado por
+    /// el servidor — nunca se recalcula aquí, solo se adopta.
+    #[serde(default)]
+    clientes: Vec<Value>,
+    #[serde(default)]
+    proveedores: Vec<Value>,
+    #[serde(default)]
+    compras: Vec<Value>,
+    /// Bitácora de puntos de OTRAS cajas (rastro; el saldo real viaja en
+    /// `clientes`).
+    #[serde(default)]
+    puntos_movimientos: Vec<Value>,
+    /// Configuración del negocio (lista blanca en el servidor: reglas de
+    /// lealtad, IVA, datos fiscales). Nunca preferencias por-dispositivo.
+    #[serde(default)]
+    config: Vec<Value>,
 }
 
 /// Resultado de una pasada de bajada (para logs y para la UI).
@@ -69,6 +85,7 @@ struct Pagina {
 pub struct ResultadoBajada {
     pub aplicados: usize,
     pub paginas: usize,
+    #[allow(dead_code)] // reservado para cuando la UI muestre estado de error de bajada
     pub hubo_error: bool,
     pub mensaje: String,
 }
@@ -445,6 +462,161 @@ fn aplicar_pagina(con: &Connection, p: &Pagina, disp_local: &str) -> Result<usiz
                 ],
             )
             .map_err(|e| format!("pago {}: {e}", txt(pg, "id")))?;
+        }
+
+        // --- Clientes del negocio (compartidos). `puntos` es el saldo REAL
+        // que calculó el servidor: se adopta tal cual, nunca se suma aquí. ---
+        for cli in &p.clientes {
+            tx.execute(
+                "INSERT INTO clientes
+                    (id, nombre, telefono, notas, limite_credito_centavos, saldo_centavos,
+                     correo, codigo, puntos, eliminado, creado_en, actualizado_en, dispositivo_id)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
+                 ON CONFLICT(id) DO UPDATE SET
+                    nombre = excluded.nombre,
+                    telefono = excluded.telefono,
+                    notas = excluded.notas,
+                    limite_credito_centavos = excluded.limite_credito_centavos,
+                    saldo_centavos = excluded.saldo_centavos,
+                    correo = excluded.correo,
+                    codigo = excluded.codigo,
+                    puntos = excluded.puntos,
+                    eliminado = excluded.eliminado,
+                    actualizado_en = excluded.actualizado_en",
+                rusqlite::params![
+                    txt(cli, "id"),
+                    txt(cli, "nombre"),
+                    opt_txt(cli, "telefono"),
+                    opt_txt(cli, "notas"),
+                    entero(cli, "limite_credito_centavos"),
+                    entero(cli, "saldo_centavos"),
+                    opt_txt(cli, "correo"),
+                    opt_txt(cli, "codigo"),
+                    entero(cli, "puntos"),
+                    bool01(cli, "eliminado"),
+                    opt_txt(cli, "creado_en").unwrap_or_else(ahora_iso),
+                    opt_txt(cli, "actualizado_en").unwrap_or_else(ahora_iso),
+                    disp_local,
+                ],
+            )
+            .map_err(|e| format!("cliente {}: {e}", txt(cli, "id")))?;
+            aplicados += 1;
+        }
+
+        // --- Proveedores del negocio (compartidos) ---
+        for prov in &p.proveedores {
+            tx.execute(
+                "INSERT INTO proveedores
+                    (id, nombre, contacto, telefono, notas, dias_visita, eliminado,
+                     creado_en, actualizado_en, dispositivo_id)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+                 ON CONFLICT(id) DO UPDATE SET
+                    nombre = excluded.nombre,
+                    contacto = excluded.contacto,
+                    telefono = excluded.telefono,
+                    notas = excluded.notas,
+                    dias_visita = excluded.dias_visita,
+                    eliminado = excluded.eliminado,
+                    actualizado_en = excluded.actualizado_en",
+                rusqlite::params![
+                    txt(prov, "id"),
+                    txt(prov, "nombre"),
+                    opt_txt(prov, "contacto"),
+                    opt_txt(prov, "telefono"),
+                    opt_txt(prov, "notas"),
+                    opt_txt(prov, "dias_visita"),
+                    bool01(prov, "eliminado"),
+                    opt_txt(prov, "creado_en").unwrap_or_else(ahora_iso),
+                    opt_txt(prov, "actualizado_en").unwrap_or_else(ahora_iso),
+                    disp_local,
+                ],
+            )
+            .map_err(|e| format!("proveedor {}: {e}", txt(prov, "id")))?;
+            aplicados += 1;
+        }
+
+        // --- Compras del negocio (compartidas) ---
+        for c in &p.compras {
+            tx.execute(
+                "INSERT INTO compras
+                    (id, proveedor_id, proveedor_nombre, folio, fecha, tipo, total_centavos,
+                     num_lineas, origen, notas, eliminado, creado_en, actualizado_en, dispositivo_id)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
+                 ON CONFLICT(id) DO UPDATE SET
+                    eliminado = excluded.eliminado,
+                    actualizado_en = excluded.actualizado_en",
+                rusqlite::params![
+                    txt(c, "id"),
+                    opt_txt(c, "proveedor_id"),
+                    opt_txt(c, "proveedor_nombre"),
+                    opt_txt(c, "folio"),
+                    opt_txt(c, "fecha"),
+                    {
+                        let t = txt(c, "tipo");
+                        if t == "preventa" { "preventa".to_string() } else { "normal".to_string() }
+                    },
+                    entero(c, "total_centavos"),
+                    entero(c, "num_lineas"),
+                    {
+                        let o = txt(c, "origen");
+                        if o == "escaner" { "escaner".to_string() } else { "manual".to_string() }
+                    },
+                    opt_txt(c, "notas"),
+                    bool01(c, "eliminado"),
+                    opt_txt(c, "creado_en").unwrap_or_else(ahora_iso),
+                    opt_txt(c, "actualizado_en").unwrap_or_else(ahora_iso),
+                    disp_local,
+                ],
+            )
+            .map_err(|e| format!("compra {}: {e}", txt(c, "id")))?;
+            aplicados += 1;
+        }
+
+        // --- Movimientos de puntos de OTRAS cajas (bitácora; el saldo ya
+        // llegó recalculado en el bloque de clientes de arriba — esto solo
+        // es el rastro para el historial). ---
+        for m in &p.puntos_movimientos {
+            tx.execute(
+                "INSERT INTO puntos_movimientos
+                    (id, cliente_id, venta_id, tipo, puntos, nota, creado_en, dispositivo_id)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
+                 ON CONFLICT(id) DO NOTHING",
+                rusqlite::params![
+                    txt(m, "id"),
+                    txt(m, "cliente_id"),
+                    opt_txt(m, "venta_id"),
+                    {
+                        let t = txt(m, "tipo");
+                        match t.as_str() {
+                            "compra" | "visita" | "canje" | "ajuste" => t,
+                            _ => "ajuste".to_string(),
+                        }
+                    },
+                    entero(m, "puntos"),
+                    opt_txt(m, "nota"),
+                    opt_txt(m, "creado_en").unwrap_or_else(ahora_iso),
+                    opt_txt(m, "dispositivo_id").unwrap_or_else(|| disp_local.to_string()),
+                ],
+            )
+            .map_err(|e| format!("movimiento de puntos {}: {e}", txt(m, "id")))?;
+            aplicados += 1;
+        }
+
+        // --- Config del negocio (lealtad, IVA, datos fiscales…). El
+        // servidor ya filtra con lista blanca, pero por seguridad extra
+        // nunca tocamos "dispositivo_id" desde aquí tampoco. ---
+        for cfg in &p.config {
+            let clave = txt(cfg, "clave");
+            if clave == "dispositivo_id" {
+                continue;
+            }
+            tx.execute(
+                "INSERT INTO config (clave, valor) VALUES (?1, ?2)
+                 ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+                rusqlite::params![clave, opt_txt(cfg, "valor")],
+            )
+            .map_err(|e| format!("config {clave}: {e}"))?;
+            aplicados += 1;
         }
 
         tx.commit().map_err(|e| format!("commit de bajada: {e}"))?;

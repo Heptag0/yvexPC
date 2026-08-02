@@ -54,9 +54,13 @@ const ITEMS = [
   { mod: "clientes",      texto: "Clientes",      ico: "clientes" },
   { mod: "lealtad",       texto: "Lealtad",       ico: "lealtad" },
   { mod: "credito",       texto: "Crédito",       ico: "credito" },
+  { mod: "proveedores",   texto: "Proveedores",   ico: "proveedor" },
+  { mod: "cotizaciones",  texto: "Cotizaciones",  ico: "cotizacion" },
   { mod: "caja",          texto: "Corte",         ico: "caja" },
   { mod: "reportes",      texto: "Reportes",      ico: "reportes",      roles: ["dueno", "gerente"] },
   { mod: "configuracion", texto: "Configuración", ico: "configuracion", roles: ["dueno", "gerente"] },
+  { mod: "dinero",        texto: "Dinero",        ico: "dinero" },
+  { mod: "etiquetas",     texto: "Etiquetado NOM",  ico: "etiqueta_nom" },
 ];
 
 export function montarShell(raiz, sesion, { alNavegar, alSalir }) {

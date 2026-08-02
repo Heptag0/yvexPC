@@ -13,6 +13,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { pesos, escapar } from "../util/formato.js";
 import { icono } from "../util/iconos.js";
+import { calcularMisiones, misionesCompletas, CLAVE_FESTEJO } from "../util/misiones.js";
 
 /// `navegar(mod)` viene de main.js: abre otro módulo desde un widget.
 export function montarInicio(contenedor, sesion, cajaSesion, navegar) {
@@ -49,6 +50,14 @@ export function montarInicio(contenedor, sesion, cajaSesion, navegar) {
 
     <div class="ini-tendencias" id="ini-tendencias" hidden></div>
 
+    <section class="ini-arranque-panel con-filo" id="ini-arranque" hidden>
+      <div class="ini-panel-titulo-fila">
+        <div class="ini-panel-titulo">Tu arranque</div>
+        <span class="ini-arranque-conteo" id="ini-arranque-conteo"></span>
+      </div>
+      <div class="ini-arranque-lista" id="ini-arranque-lista"></div>
+    </section>
+
     <div class="ini-grid">
       <section class="ini-panel con-filo">
         <div class="ini-panel-titulo">Actividad reciente</div>
@@ -70,6 +79,44 @@ export function montarInicio(contenedor, sesion, cajaSesion, navegar) {
       <span class="ini-card-label">${label}</span>
       <span class="ini-card-valor num" id="${id}">${valor}</span>
     </div>`;
+  }
+
+  function tarjetaMision(m) {
+    const pct = Math.min(100, Math.round((m.progreso / m.meta) * 100));
+    return `
+      <button class="ini-mision ${m.hecho ? "ini-mision--hecha" : ""}" data-ir="${destinoMision(m.id)}" ${m.hecho ? "disabled" : ""}>
+        <span class="ini-mision-ico ${m.hecho ? "ini-mision-ico--hecha" : ""}">${m.hecho ? "✓" : icono(m.icono)}</span>
+        <span class="ini-mision-cuerpo">
+          <span class="ini-mision-titulo-fila">
+            <span class="ini-mision-titulo">${escapar(m.titulo)}</span>
+            <span class="ini-mision-progreso">${m.hecho ? "Hecho" : `${m.progreso}/${m.meta}`}</span>
+          </span>
+          ${!m.hecho ? `
+            <span class="ini-mision-barra"><span class="ini-mision-barra-relleno" style="width:${pct}%"></span></span>
+            <span class="ini-mision-detalle">${escapar(m.detalle)}</span>
+          ` : ""}
+        </span>
+      </button>`;
+  }
+
+  // A qué módulo lleva cada misión al tocarla. "negocio" → Configuración
+  // (ahí vive el nombre del negocio); todo lo demás pasa por Inventario,
+  // incluida "ventas" — abrir un turno y cobrar arranca desde ahí.
+  // ⚠️ Verifica que "configuracion" sea el id exacto que usa tu sidebar; si
+  // tu módulo se llama distinto, es el único ajuste que necesitarías aquí.
+  function destinoMision(id) {
+    if (id === "negocio") return "configuracion";
+    return "inventario";
+  }
+
+  function cajaFestejo() {
+    return `
+      <div class="ini-festejo">
+        <div class="ini-festejo-ico">🎉</div>
+        <div class="ini-festejo-titulo">¡Arranque completo!</div>
+        <p class="ini-festejo-txt">Ya diste los primeros pasos importantes. Ahora sí, a venderle con todo.</p>
+        <button class="btn-primario ini-festejo-cerrar" id="ini-festejo-cerrar">Entendido</button>
+      </div>`;
   }
 
   // ------------------------------------------------ Métricas del turno
@@ -270,6 +317,25 @@ export function montarInicio(contenedor, sesion, cajaSesion, navegar) {
       } catch (e) { console.error(e); }
     }
 
+    // Avisos de proveedores: "mañana llega Coca-Cola" — informativo, nunca
+    // bloquea nada si el comando falla o no hay proveedores con rutina.
+    try {
+      const hoy = new Date();
+      const hoyYmd = hoy.getFullYear() + "-" + String(hoy.getMonth() + 1).padStart(2, "0") + "-" + String(hoy.getDate()).padStart(2, "0");
+      const avisos = await invoke("prov_avisos_visita", { hoy: hoyYmd });
+      for (const a of avisos.slice(0, 3)) {
+        const partes = [
+          a.ultimo_ticket_centavos != null ? `último ${pesos(a.ultimo_ticket_centavos)}` : null,
+          a.ticket_promedio_centavos != null ? `promedio ${pesos(a.ticket_promedio_centavos)}` : null,
+        ].filter(Boolean).join(" · ");
+        alertas.push({
+          ir: "proveedores", tono: "alerta", ico: "proveedor",
+          titulo: `${a.etiqueta} llega ${a.proveedor.nombre}`,
+          sub: partes || "Sin compras registradas todavía",
+        });
+      }
+    } catch (e) { console.error(e); }
+
     if (alertas.length === 0) {
       cont.innerHTML = '<div class="ini-ok">✓ Todo en orden. Nada pide tu atención.</div>';
       return;
@@ -283,6 +349,47 @@ export function montarInicio(contenedor, sesion, cajaSesion, navegar) {
         </span>
       </button>`).join("");
     enlazarNavegacion(cont);
+  })();
+
+  // ------------------------------------------------ Tu arranque (misiones)
+  // Independiente de todo lo demás: si falla, no afecta ni bloquea el resto
+  // de Inicio. Se oculta para siempre en cuanto se ve la celebración final.
+  (async () => {
+    const zona = $("#ini-arranque");
+    const lista = $("#ini-arranque-lista");
+    const conteo = $("#ini-arranque-conteo");
+    if (!zona) return;
+    try {
+      const [cfg, prog] = await Promise.all([
+        invoke("config_leer_todo"),
+        invoke("misiones_progreso"),
+      ]);
+      if (cfg[CLAVE_FESTEJO] === "1") return; // ya se celebró: no vuelve a aparecer
+
+      const misiones = calcularMisiones(cfg, prog);
+      zona.hidden = false;
+
+      if (misionesCompletas(misiones)) {
+        conteo.textContent = "";
+        lista.innerHTML = cajaFestejo();
+        const cerrar = $("#ini-festejo-cerrar");
+        if (cerrar) cerrar.addEventListener("click", async () => {
+          try {
+            await invoke("config_guardar_claves", {
+              claves: { [CLAVE_FESTEJO]: "1" }, rol: sesion.rol,
+            });
+          } catch (e) { console.error(e); }
+          zona.hidden = true;
+        });
+        return;
+      }
+
+      conteo.textContent = `${misiones.filter((m) => m.hecho).length} de ${misiones.length}`;
+      lista.innerHTML = misiones.map(tarjetaMision).join("");
+      enlazarNavegacion(lista);
+    } catch (e) {
+      console.warn("Tu arranque no disponible:", e);
+    }
   })();
 
   // ------------------------------------------------ Tickets en espera

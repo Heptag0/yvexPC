@@ -6,7 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { escapar } from "../util/formato.js";
 import { montarVinculacion, detenerPolling } from "../util/vinculacion_ui.js";
 import { montarVerificacionInline } from "../util/verificacion_ui.js";
-import { TEMAS, ACENTOS, aplicarApariencia, hexAcento, valorApariencia } from "../util/apariencia.js";
+import { TEMAS, ACENTOS, aplicarApariencia, hexAcento, valorApariencia, TEMAS_INFO } from "../util/apariencia.js";
+import { PACKS, PACKS_INFO, packDeConfig } from "../util/iconos-depto.js";
 
 const OPCIONES_IVA = [
   { valor: 0, label: "Sin IVA", desc: "No se aplica impuesto" },
@@ -548,9 +549,7 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
     let acento = valorApariencia(cfg, "apariencia_acento");
     let densidad = valorApariencia(cfg, "apariencia_densidad");
     let forma = valorApariencia(cfg, "apariencia_forma");
-
-    const nombresTema = { nocturno: "Nocturno", amanecer: "Amanecer", brisa: "Brisa" };
-    const almaTema = { nocturno: "Oscuro y enfocado", amanecer: "Claro y cálido", brisa: "Claro y suave" };
+    let pack = packDeConfig(cfg);
 
     function pintar() {
       wrap.innerHTML = `${cabeceraSub("Apariencia", false)}
@@ -563,8 +562,8 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
                   <div class="onb-tema-barra"></div>
                   <div class="onb-tema-punto" style="background:${hexAcento(acento, t)}"></div>
                 </div>
-                <div class="onb-tema-nombre">${nombresTema[t]}</div>
-                <div class="onb-tema-alma">${almaTema[t]}</div>
+                <div class="onb-tema-nombre">${TEMAS_INFO[t].nombre}</div>
+                <div class="onb-tema-alma">${TEMAS_INFO[t].alma}</div>
               </button>`).join("")}
           </div>
 
@@ -594,6 +593,14 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
               </div>
             </div>
           </div>
+          <p class="cfg-seccion-sub" style="margin-top:18px">Iconos de departamento</p>
+          <div class="onb-acento-zona">
+            <span class="onb-acento-lbl">Cómo se ven en la rejilla de venta y en Inventario</span>
+            <div class="cfg-segmento cfg-segmento--3">
+              ${PACKS.map((p) => `
+                <button type="button" data-pack="${p}" class="${pack === p ? "cfg-seg--activo" : ""}" title="${PACKS_INFO[p].desc}">${PACKS_INFO[p].nombre}</button>`).join("")}
+            </div>
+          </div>
           <p id="sub-ok" class="cfg-ok" hidden>Guardado ✓</p>
         </section>`;
       conectarVolver();
@@ -611,6 +618,8 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
         b.addEventListener("click", () => { densidad = b.dataset.densidad; aplicar(); persistir(); pintar(); }));
       wrap.querySelectorAll("[data-forma]").forEach((b) =>
         b.addEventListener("click", () => { forma = b.dataset.forma; aplicar(); persistir(); pintar(); }));
+      wrap.querySelectorAll("[data-pack]").forEach((b) =>
+        b.addEventListener("click", () => { pack = b.dataset.pack; persistir(); pintar(); }));
     }
 
     // Guarda en config (silencioso; la apariencia ya se aplicó en vivo).
@@ -618,6 +627,7 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
       await guardarClaves({
         apariencia_tema: tema, apariencia_acento: acento,
         apariencia_densidad: densidad, apariencia_forma: forma,
+        pack_iconos: pack,
       });
     }
 

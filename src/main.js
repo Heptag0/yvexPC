@@ -23,10 +23,14 @@ import { montarConfiguracion } from "./vistas/configuracion.js";
 import { montarTienda } from "./vistas/tienda.js";
 import { montarPedidosWeb } from "./vistas/pedidos_web.js";
 import { montarLealtad } from "./vistas/lealtad.js";
+import { montarProveedores } from "./vistas/proveedores.js";
+import { montarCotizaciones } from "./vistas/cotizaciones.js";
 import { montarShell, badgePedidos } from "./util/sidebar.js";
 import { montarInicio } from "./vistas/inicio.js";
 import { aplicarApariencia } from "./util/apariencia.js";
 import { revisarVerificacion } from "./util/verificacion_banner.js";
+import { montarDinero } from "./vistas/dinero.js";
+import { montarEtiquetas } from "./vistas/etiquetas.js";
 
 const app = document.querySelector("#app");
 let sesion = null;
@@ -145,6 +149,10 @@ function abrirModulo(mod) {
     montarPedidosWeb(raiz, sesion, cajaSesion, irAMenu);
   } else if (mod === "lealtad") {
     montarLealtad(raiz, sesion, irAMenu);
+  } else if (mod === "proveedores") {
+    montarProveedores(raiz, sesion, irAMenu);
+  } else if (mod === "cotizaciones") {
+    montarCotizaciones(raiz, sesion, irAMenu, abrirModulo);
   } else if (mod === "clientes") {
     montarClientes(raiz, sesion, cajaSesion, irAMenu);
   } else if (mod === "credito") {
@@ -155,6 +163,10 @@ function abrirModulo(mod) {
     montarReportes(raiz, sesion, irAMenu);
   } else if (mod === "configuracion") {
     montarConfiguracion(raiz, sesion, irAMenu);
+  } else if (mod === "dinero") {
+    montarDinero(raiz, sesion, cajaSesion, irAMenu);
+  } else if (mod === "etiquetas") {
+    montarEtiquetas(raiz, sesion, irAMenu);
   } else {
     raiz.innerHTML =
       '<div class="estado estado--ok" style="max-width:520px">' +

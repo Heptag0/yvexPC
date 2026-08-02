@@ -38,6 +38,12 @@ const ICONOS = {
   pedidos: `<path d="M6 7h12l1 13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1L6 7Z"/><path d="M9 10V6a3 3 0 0 1 6 0v4"/>`,
   // Lealtad (estrella / puntos)
   lealtad: `<path d="m12 2.5 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5-5.8-3-5.8 3 1.1-6.5L2.6 9.3l6.5-.9L12 2.5Z"/>`,
+  // Proveedores (camión de reparto)
+  proveedor: `<path d="M2.5 6.5h11v9h-11z"/><path d="M13.5 10h3.5l3.5 3v2.5h-7z"/><circle cx="6.5" cy="17.5" r="1.7"/><circle cx="17" cy="17.5" r="1.7"/>`,
+  codigo: `<path d="M3 4v16M7 4v16M10 4v16M13 4v11M16 4v16M19 4v16M21 4v16" stroke="currentColor" stroke-width="1.8" fill="none"/>`,
+  cotizacion: `<path d="M6 2.5h9l3 3v16h-12z"/><path d="M15 2.5v3h3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8.5 11h7M8.5 14h7M8.5 17h4" stroke="var(--superficie-1, #fff)" stroke-width="1.3"/>`,
+  dinero: `<path d="M12 2.5v19M16.5 6.8c-.8-1.1-2.4-1.8-4.5-1.8-2.8 0-4.5 1.2-4.5 3s1.7 2.6 4.5 3.2 4.8 1.4 4.8 3.4-2 3.4-4.8 3.4c-2.3 0-4-.8-4.8-2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>`,
+  etiqueta_nom: `<polygon points="12,2.5 17,2.5 21.5,7 21.5,17 17,21.5 12,21.5 7.5,17 7.5,7" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M14.5 9.5v5M14.5 16.5h.01" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>`,
 };
 
 export function icono(nombre) {

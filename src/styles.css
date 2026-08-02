@@ -251,6 +251,289 @@
   color-scheme: light;
 }
 
+/* ---------------------------------------------------------------------------
+   GRAFITO — negro puro. En monitores OLED el negro real apaga el píxel: menos
+   fatiga en turnos largos de noche y el máximo enfoque en el contenido.
+   --------------------------------------------------------------------------- */
+[data-tema="grafito"] {
+  --bg: #000000;
+  --superficie-1: #0d0d0f;
+  --superficie-2: #151517;
+  --superficie-3: #1d1d20;
+  --sidebar: #070708;
+  --borde: #1d1d20;
+  --borde-fuerte: #2e2e33;
+  --filo: rgba(255, 255, 255, 0.05);
+
+  --texto: #f5f5f7;
+  --texto-tenue: #9e9ea6;
+  --texto-debil: #66666e;
+
+  --acento: #8b5cf6;
+  --acento-suave: rgba(139, 92, 246, 0.14);
+  --acento-borde: rgba(139, 92, 246, 0.42);
+  --acento-texto: #ffffff;
+
+  --exito: #34d399;
+  --exito-suave: rgba(52, 211, 153, 0.12);
+  --exito-borde: rgba(52, 211, 153, 0.35);
+  --peligro: #fb6f6f;
+  --peligro-suave: rgba(251, 111, 111, 0.12);
+  --peligro-tinte: rgba(251, 111, 111, 0.06);
+  --peligro-borde: rgba(251, 111, 111, 0.35);
+  --alerta: #fbbf24;
+  --alerta-suave: rgba(251, 191, 36, 0.12);
+  --alerta-borde: rgba(251, 191, 36, 0.40);
+  --info: #60a5fa;
+
+  --sombra-1: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --sombra-2: 0 4px 16px rgba(0, 0, 0, 0.6);
+  --sombra-3: 0 12px 40px rgba(0, 0, 0, 0.75);
+  --glow-acento: 0 0 0 3px var(--acento-suave);
+
+  /* Sin atmósfera: el punto de Grafito es el negro liso, sin halos. */
+  --atmosfera: none;
+  --resplandor-acento: rgba(139, 92, 246, 0.18);
+  --velo: rgba(0, 0, 0, 0.82);
+
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+   AURORA — índigo profundo. El más "premium" de los oscuros: mismo enfoque que
+   Nocturno pero con un azul frío que cansa menos bajo luz de tienda blanca.
+   --------------------------------------------------------------------------- */
+[data-tema="aurora"] {
+  --bg: #090b16;
+  --superficie-1: #111527;
+  --superficie-2: #181d33;
+  --superficie-3: #202642;
+  --sidebar: #0c0f1e;
+  --borde: #202642;
+  --borde-fuerte: #303a63;
+  --filo: rgba(255, 255, 255, 0.06);
+
+  --texto: #f3f5ff;
+  --texto-tenue: #a3abd0;
+  --texto-debil: #6a7194;
+
+  --acento: #8b5cf6;
+  --acento-suave: rgba(139, 92, 246, 0.13);
+  --acento-borde: rgba(139, 92, 246, 0.40);
+  --acento-texto: #ffffff;
+
+  --exito: #34d399;
+  --exito-suave: rgba(52, 211, 153, 0.12);
+  --exito-borde: rgba(52, 211, 153, 0.35);
+  --peligro: #fb6f6f;
+  --peligro-suave: rgba(251, 111, 111, 0.12);
+  --peligro-tinte: rgba(251, 111, 111, 0.06);
+  --peligro-borde: rgba(251, 111, 111, 0.35);
+  --alerta: #fbbf24;
+  --alerta-suave: rgba(251, 191, 36, 0.12);
+  --alerta-borde: rgba(251, 191, 36, 0.40);
+  --info: #60a5fa;
+
+  --sombra-1: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --sombra-2: 0 4px 16px rgba(0, 0, 0, 0.36);
+  --sombra-3: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --glow-acento: 0 0 0 3px var(--acento-suave);
+
+  --atmosfera:
+    radial-gradient(ellipse 900px 600px at 85% -10%, rgba(99, 102, 241, 0.08), transparent 60%),
+    radial-gradient(ellipse 700px 500px at -10% 110%, rgba(34, 211, 238, 0.05), transparent 60%);
+  --resplandor-acento: rgba(139, 92, 246, 0.18);
+  --velo: rgba(4, 6, 14, 0.74);
+
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+   ALBA — claro y limpio. Para ver todo a plena luz sin calidez de color.
+   (Sustituye al antiguo "brisa"; apariencia.js traduce solo.)
+   --------------------------------------------------------------------------- */
+[data-tema="alba"] {
+  --bg: #f4f5f7;
+  --superficie-1: #ffffff;
+  --superficie-2: #eef0f4;
+  --superficie-3: #e3e6ec;
+  --sidebar: #eceef2;
+  --borde: #e0e3e9;
+  --borde-fuerte: #c9ced8;
+  --filo: rgba(255, 255, 255, 0.85);
+
+  --texto: #171a21;
+  --texto-tenue: #4d5566;
+  --texto-debil: #8a92a3;
+
+  --acento: #7c3aed;
+  --acento-suave: rgba(124, 58, 237, 0.09);
+  --acento-borde: rgba(124, 58, 237, 0.35);
+  --acento-texto: #ffffff;
+
+  --exito: #0d9d6f;
+  --exito-suave: rgba(13, 157, 111, 0.11);
+  --exito-borde: rgba(13, 157, 111, 0.35);
+  --peligro: #dc4646;
+  --peligro-suave: rgba(220, 70, 70, 0.10);
+  --peligro-tinte: rgba(220, 70, 70, 0.05);
+  --peligro-borde: rgba(220, 70, 70, 0.35);
+  --alerta: #946200;
+  --alerta-suave: rgba(148, 98, 0, 0.10);
+  --alerta-borde: rgba(148, 98, 0, 0.40);
+  --info: #2563eb;
+
+  --sombra-1: 0 1px 3px rgba(23, 26, 33, 0.06);
+  --sombra-2: 0 4px 18px rgba(23, 26, 33, 0.08);
+  --sombra-3: 0 12px 40px rgba(23, 26, 33, 0.16);
+  --glow-acento: 0 0 0 3px var(--acento-suave);
+
+  --atmosfera:
+    radial-gradient(ellipse 900px 600px at 85% -10%, rgba(99, 102, 241, 0.07), transparent 60%),
+    radial-gradient(ellipse 700px 500px at -10% 110%, rgba(45, 212, 191, 0.06), transparent 60%);
+  --resplandor-acento: rgba(124, 58, 237, 0.12);
+  --velo: rgba(23, 26, 33, 0.36);
+
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------------------
+   DUNA — crema cálido. Suave a la vista en jornadas largas con luz de día.
+   (Sustituye al antiguo "amanecer"; apariencia.js traduce solo.)
+   --------------------------------------------------------------------------- */
+[data-tema="duna"] {
+  --bg: #f5f0e6;
+  --superficie-1: #fdfaf3;
+  --superficie-2: #efe7d7;
+  --superficie-3: #e6dcc7;
+  --sidebar: #efe8da;
+  --borde: #e2d8c3;
+  --borde-fuerte: #cbbd9f;
+  --filo: rgba(255, 255, 255, 0.8);
+
+  --texto: #2a241a;
+  --texto-tenue: #5c5342;
+  --texto-debil: #968a72;
+
+  --acento: #7c3aed;
+  --acento-suave: rgba(124, 58, 237, 0.09);
+  --acento-borde: rgba(124, 58, 237, 0.35);
+  --acento-texto: #ffffff;
+
+  --exito: #0d7d59;
+  --exito-suave: rgba(13, 125, 89, 0.11);
+  --exito-borde: rgba(13, 125, 89, 0.35);
+  --peligro: #c93b3b;
+  --peligro-suave: rgba(201, 59, 59, 0.10);
+  --peligro-tinte: rgba(201, 59, 59, 0.05);
+  --peligro-borde: rgba(201, 59, 59, 0.35);
+  --alerta: #8a5a00;
+  --alerta-suave: rgba(138, 90, 0, 0.11);
+  --alerta-borde: rgba(138, 90, 0, 0.40);
+  --info: #2159c4;
+
+  --sombra-1: 0 1px 3px rgba(42, 36, 26, 0.07);
+  --sombra-2: 0 4px 18px rgba(42, 36, 26, 0.09);
+  --sombra-3: 0 12px 40px rgba(42, 36, 26, 0.18);
+  --glow-acento: 0 0 0 3px var(--acento-suave);
+
+  --atmosfera:
+    radial-gradient(ellipse 900px 600px at 85% -10%, rgba(180, 83, 9, 0.06), transparent 60%),
+    radial-gradient(ellipse 700px 500px at -10% 110%, rgba(124, 58, 237, 0.05), transparent 60%);
+  --resplandor-acento: rgba(124, 58, 237, 0.11);
+  --velo: rgba(42, 36, 26, 0.36);
+
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------------------
+   MEDIODÍA (contraste) — el único tema pensado para el PC y no heredado del
+   móvil.
+   El problema real: un mostrador junto a una ventana a mediodía, o un cajero
+   de 60 años. En el teléfono acercas la pantalla; en un monitor fijo a 70 cm
+   no puedes. Aquí NADA es tenue:
+     · blanco puro / casi negro (contraste ~17:1, muy por encima del AAA 7:1)
+     · el "texto tenue" sigue siendo legible de verdad (no gris claro)
+     · bordes sólidos y visibles, no insinuados
+     · sin atmósfera ni velos de color que bajen el contraste
+     · semánticos saturados: el rojo se ve rojo aunque le pegue el sol
+   --------------------------------------------------------------------------- */
+[data-tema="contraste"] {
+  --bg: #ffffff;
+  --superficie-1: #ffffff;
+  --superficie-2: #f2f2f4;
+  --superficie-3: #e6e6ea;
+  --sidebar: #f2f2f4;
+  --borde: #b4b4bd;
+  --borde-fuerte: #6b6b75;
+  --filo: rgba(255, 255, 255, 0.9);
+
+  --texto: #0a0a0c;
+  --texto-tenue: #33333c;   /* legible de verdad: no es decorativo */
+  --texto-debil: #55555f;
+
+  --acento: #5b21b6;
+  --acento-suave: rgba(91, 33, 182, 0.10);
+  --acento-borde: rgba(91, 33, 182, 0.55);
+  --acento-texto: #ffffff;
+
+  --exito: #046c4e;
+  --exito-suave: rgba(4, 108, 78, 0.11);
+  --exito-borde: rgba(4, 108, 78, 0.5);
+  --peligro: #b3121b;
+  --peligro-suave: rgba(179, 18, 27, 0.10);
+  --peligro-tinte: rgba(179, 18, 27, 0.05);
+  --peligro-borde: rgba(179, 18, 27, 0.5);
+  --alerta: #7a4b00;
+  --alerta-suave: rgba(122, 75, 0, 0.11);
+  --alerta-borde: rgba(122, 75, 0, 0.5);
+  --info: #1249c4;
+
+  /* Sombras marcadas: en alto contraste la profundidad se lee por sombra
+     nítida, no por degradado suave. */
+  --sombra-1: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --sombra-2: 0 3px 10px rgba(0, 0, 0, 0.26);
+  --sombra-3: 0 10px 32px rgba(0, 0, 0, 0.34);
+  --glow-acento: 0 0 0 3px rgba(91, 33, 182, 0.35);
+
+  --atmosfera: none;
+  --resplandor-acento: rgba(91, 33, 182, 0.16);
+  --velo: rgba(0, 0, 0, 0.55);
+
+  color-scheme: light;
+}
+
+/* Mediodía ignora el acento personalizado en los elementos donde el contraste
+   manda (botón principal, foco). Sin esto, elegir "Perla" sobre blanco haría
+   ilegible justo lo que este tema promete. */
+[data-tema="contraste"] .btn-primario {
+  background: var(--acento);
+  color: #ffffff;
+  border-color: var(--acento);
+  font-weight: 700;
+}
+[data-tema="contraste"] *:focus-visible {
+  outline: 3px solid var(--acento);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Vistas previas de tema (los cuadritos del selector en onboarding y ajustes).
+   El selector ya usa .onb-tema-preview--{id}; estas son las de los temas
+   nuevos. Si tenías reglas para --amanecer y --brisa, se pueden dejar.
+   --------------------------------------------------------------------------- */
+.onb-tema-preview--grafito   { background: #000000; }
+.onb-tema-preview--grafito .onb-tema-barra   { background: #1d1d20; }
+.onb-tema-preview--aurora    { background: #090b16; }
+.onb-tema-preview--aurora .onb-tema-barra    { background: #202642; }
+.onb-tema-preview--alba      { background: #f4f5f7; }
+.onb-tema-preview--alba .onb-tema-barra      { background: #d8dce3; }
+.onb-tema-preview--duna      { background: #f5f0e6; }
+.onb-tema-preview--duna .onb-tema-barra      { background: #e2d8c3; }
+.onb-tema-preview--contraste { background: #ffffff; border: 1px solid #b4b4bd; }
+.onb-tema-preview--contraste .onb-tema-barra { background: #0a0a0c; }
+
+
 /* ============================================================================
    CAPA 3 — EJES DE AJUSTE (personalización del dueño)
    ----------------------------------------------------------------------------
@@ -5237,3 +5520,767 @@ body.modo-fluido .alerta-neg--visible { animation: none; }
   padding: 0 6px;
 }
 .vt-cli-quitar:hover { color: var(--peligro); }
+
+/* ============================================================================
+   Proveedores y compras
+   ============================================================================ */
+.prov-dias { display: flex; gap: 6px; margin-top: 10px; }
+.prov-dia {
+  width: 38px; height: 38px; border-radius: var(--radio-full);
+  border: 1px solid var(--borde); background: var(--superficie);
+  color: var(--texto-tenue); font-size: 12.5px; font-weight: 700;
+  cursor: pointer; transition: all 0.15s ease;
+}
+.prov-dia:hover { border-color: var(--acento); color: var(--texto); }
+.prov-dia--on { background: var(--acento-suave); border-color: var(--acento); color: var(--texto); }
+
+.prov-hist-lista { max-height: 50vh; overflow-y: auto; margin: 14px 0; }
+.prov-hist-fila {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 4px; border-bottom: 1px solid var(--borde);
+}
+.prov-hist-fila:last-child { border-bottom: none; }
+.prov-hist-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.prov-hist-fecha { font-size: var(--txt-etiqueta); font-weight: 600; }
+.prov-hist-meta, .prov-hist-notas { font-size: var(--txt-mini); color: var(--texto-tenue); }
+.prov-hist-acc { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.prov-hist-total { font-weight: 700; }
+
+/* ============================================================================
+   Onboarding — selector de giro y cierre personalizado
+   ============================================================================ */
+.onb-giros {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.onb-giro {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  padding: 14px; border-radius: var(--radio-md, 12px);
+  border: 1px solid var(--borde); background: var(--superficie-2);
+  cursor: pointer; text-align: left; transition: all 0.15s ease;
+}
+.onb-giro:hover { border-color: var(--acento-borde); }
+.onb-giro--activo { border-color: var(--acento); background: var(--acento-suave); }
+.onb-giro-ico {
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  color: var(--acento);
+}
+.onb-giro-ico svg { width: 22px; height: 22px; }
+.onb-giro-nombre { font-weight: 700; font-size: 14.5px; color: var(--texto); }
+.onb-giro-frase { font-size: 12.5px; color: var(--texto-tenue); line-height: 1.35; }
+
+.onb-cierre .onb-sugerencias {
+  list-style: none; padding: 0; margin: 18px 0; display: flex; flex-direction: column; gap: 12px;
+}
+.onb-cierre .onb-sugerencias li {
+  position: relative; padding-left: 28px; font-size: 14.5px; line-height: 1.5; color: var(--texto);
+}
+.onb-cierre .onb-sugerencias li::before {
+  content: "✓"; position: absolute; left: 0; top: 0;
+  color: var(--exito); font-weight: 700;
+}
+
+/* ============================================================================
+   Inicio — "Tu arranque" (misiones)
+   Pegar al final de styles.css.
+   ============================================================================ */
+.ini-arranque-panel { margin-bottom: 16px; }
+.ini-panel-titulo-fila {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ini-arranque-conteo {
+  font-size: 12.5px; font-weight: 700; color: var(--texto-tenue);
+}
+
+.ini-arranque-lista {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px; margin-top: 10px;
+}
+
+.ini-mision {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px; border-radius: var(--radio-md, 12px);
+  border: 1px solid var(--borde); background: var(--superficie-2);
+  cursor: pointer; text-align: left; transition: all 0.15s ease;
+  font-family: inherit;
+}
+.ini-mision:hover:not(:disabled) { border-color: var(--acento-borde); }
+.ini-mision:disabled { cursor: default; }
+.ini-mision--hecha {
+  border-color: var(--exito-borde); background: var(--exito-suave);
+  opacity: 0.85;
+}
+
+.ini-mision-ico {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--acento-suave); border: 1px solid var(--acento-borde);
+  color: var(--acento);
+}
+.ini-mision-ico svg { width: 18px; height: 18px; }
+.ini-mision-ico--hecha {
+  background: var(--exito-suave); border-color: var(--exito-borde);
+  color: var(--exito); font-weight: 800; font-size: 15px;
+}
+
+.ini-mision-cuerpo { flex: 1; min-width: 0; }
+.ini-mision-titulo-fila {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.ini-mision-titulo { font-size: 14px; font-weight: 700; color: var(--texto); }
+.ini-mision--hecha .ini-mision-titulo { color: var(--texto-tenue); }
+.ini-mision-progreso { font-size: 11.5px; font-weight: 800; color: var(--acento); flex-shrink: 0; }
+.ini-mision--hecha .ini-mision-progreso { color: var(--exito); }
+
+.ini-mision-barra {
+  display: block; height: 5px; border-radius: 3px; background: var(--superficie-3);
+  margin-top: 8px; overflow: hidden;
+}
+.ini-mision-barra-relleno {
+  display: block; height: 5px; border-radius: 3px; background: var(--acento);
+}
+.ini-mision-detalle {
+  display: block; font-size: 12px; color: var(--texto-tenue); margin-top: 6px; line-height: 1.4;
+}
+
+/* --- Celebración final --- */
+.ini-festejo {
+  grid-column: 1 / -1;
+  text-align: center; padding: 22px 18px;
+  border-radius: var(--radio-md, 12px);
+  border: 1px solid var(--exito-borde); background: var(--exito-suave);
+}
+.ini-festejo-ico { font-size: 30px; margin-bottom: 6px; }
+.ini-festejo-titulo { font-size: 16px; font-weight: 800; color: var(--texto); margin-bottom: 4px; }
+.ini-festejo-txt { font-size: 13.5px; color: var(--texto-tenue); margin: 0 0 14px; }
+
+/* Lista de departamentos: reemplaza el punto de color por un badge con icono */
+.cat-icono {
+  width: 26px; height: 26px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.cat-icono svg { width: 15px; height: 15px; }
+.ico-depto-inicial { font-weight: 800; line-height: 1; }
+
+/* Selector de icono en el modal de departamento */
+.depto-iconos {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 6px; margin-top: 6px;
+}
+.depto-icono-op {
+  width: 38px; height: 38px; border-radius: 9px;
+  border: 1px solid var(--borde); background: var(--superficie-2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--texto-tenue); cursor: pointer; transition: all 0.15s ease;
+}
+.depto-icono-op:hover { border-color: var(--acento); color: var(--texto); }
+.depto-icono-op--activo {
+  border-color: var(--acento); background: var(--acento-suave); color: var(--acento);
+}
+.depto-icono-op svg { width: 18px; height: 18px; }
+.depto-icono-x { font-size: 13px; }
+
+/* Tarjeta de favorito en Venta: badge de icono junto al nombre.
+   ⚠️ No sé el layout exacto de .fav-card (flex/grid, tamaño), así que este
+   badge queda en el flujo normal (arriba de todo), NO con position:absolute
+   — así no hay riesgo de que se monte encima del precio. Si prefieres que
+   quede como esquina superior, dime cómo está armado .fav-card y lo ajusto. */
+.fav-depto-ico {
+  width: 20px; height: 20px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 4px;
+}
+.fav-depto-ico svg { width: 12px; height: 12px; }
+
+
+/* Lista de departamentos: reemplaza el punto de color por un badge con icono */
+.cat-icono {
+  width: 26px; height: 26px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.cat-icono svg { width: 15px; height: 15px; }
+.ico-depto-inicial { font-weight: 800; line-height: 1; }
+ 
+/* Selector de icono en el modal de departamento */
+.depto-iconos {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 6px; margin-top: 6px;
+}
+.depto-icono-op {
+  width: 38px; height: 38px; border-radius: 9px;
+  border: 1px solid var(--borde); background: var(--superficie-2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--texto-tenue); cursor: pointer; transition: all 0.15s ease;
+}
+.depto-icono-op:hover { border-color: var(--acento); color: var(--texto); }
+.depto-icono-op--activo {
+  border-color: var(--acento); background: var(--acento-suave); color: var(--acento);
+}
+.depto-icono-op svg { width: 18px; height: 18px; }
+.depto-icono-x { font-size: 13px; }
+ 
+/* Tarjeta de favorito en Venta: badge de icono junto al nombre.
+   ⚠️ No sé el layout exacto de .fav-card (flex/grid, tamaño), así que este
+   badge queda en el flujo normal (arriba de todo), NO con position:absolute
+   — así no hay riesgo de que se monte encima del precio. Si prefieres que
+   quede como esquina superior, dime cómo está armado .fav-card y lo ajusto. */
+.fav-depto-ico {
+  width: 20px; height: 20px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 4px;
+}
+.fav-depto-ico svg { width: 12px; height: 12px; }
+ 
+/* Selector de pack de iconos en Apariencia (3 opciones, a diferencia de los
+   segmentos de 2 que ya tenías para Densidad/Bordes). Si ".cfg-segmento" ya
+   se ve bien con 3 hijos sin esto, este bloque no hace daño de todos modos. */
+.cfg-segmento--3 { display: flex; }
+.cfg-segmento--3 button { flex: 1; }
+
+.onb-deptos {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 8px;
+  max-height: 340px; overflow-y: auto;
+}
+.onb-depto {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: var(--radio-md, 10px);
+  border: 1px solid var(--borde); background: var(--superficie-2);
+  transition: opacity 0.15s ease;
+}
+.onb-depto--fuera { opacity: 0.45; }
+.onb-depto input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; cursor: pointer; }
+.onb-depto-ico {
+  width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--acento-suave); color: var(--acento);
+}
+.onb-depto-ico svg { width: 15px; height: 15px; }
+.onb-depto-nombre {
+  flex: 1; border: none; background: transparent; color: var(--texto);
+  font-size: 14.5px; font-weight: 600; padding: 4px 0;
+}
+.onb-depto-nombre:focus { outline: none; }
+.onb-depto--fuera .onb-depto-nombre { text-decoration: line-through; }
+
+/* --- Modal de producto: selector de foto --- */
+.m-foto-zona {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--borde);
+}
+.m-foto-preview {
+  width: 64px; height: 64px; border-radius: 12px; flex-shrink: 0;
+  background: var(--superficie-2); border: 1px solid var(--borde);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.m-foto-preview img { width: 100%; height: 100%; object-fit: cover; }
+.m-foto-vacio { font-size: 11px; color: var(--texto-debil); text-align: center; }
+.m-foto-btns { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.m-foto-btns .m-hint { margin: 0; }
+
+/* --- Tabla de inventario: foto/icono en vez del punto plano --- */
+.inv-dep-foto {
+  width: 30px; height: 30px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+}
+.inv-dep-ico {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.inv-dep-ico svg { width: 15px; height: 15px; }
+
+/* --- Tarjeta de favorito en Venta --- */
+.fav-foto {
+  width: 20px; height: 20px; border-radius: 6px; object-fit: cover;
+  margin-bottom: 4px; display: block;
+}
+
+/* ============================================================================
+   Cotizaciones — pegar al final de styles.css
+   ============================================================================ */
+
+/* Insignia de estado en la lista */
+.cot-estado {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700;
+}
+.cot-estado--abierta    { background: var(--acento-suave); color: var(--acento); }
+.cot-estado--convertida { background: var(--exito-suave); color: var(--exito); }
+.cot-estado--vencida    { background: var(--alerta-suave); color: var(--alerta); }
+.cot-estado--cancelada  { background: var(--superficie-3); color: var(--texto-tenue); }
+
+/* Modal ancho (para el constructor y la vista, más espacio que un modal normal) */
+.modal--ancho { max-width: 640px; width: 92vw; }
+
+/* Vista de una cotización */
+.cot-vista-lineas { margin: 14px 0; display: flex; flex-direction: column; gap: 8px; }
+.cot-vista-linea { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+.cot-vista-totales { border-top: 1px solid var(--borde); padding-top: 10px; margin-top: 4px; }
+.cot-vista-totales > div { display: flex; justify-content: space-between; font-size: 13.5px; padding: 3px 0; color: var(--texto-tenue); }
+.cot-vista-total { font-weight: 800; font-size: 16px; color: var(--texto); border-top: 1px solid var(--borde); margin-top: 6px; padding-top: 8px; }
+
+/* Constructor: lista de líneas editable */
+.cot-lineas-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 16px; margin-bottom: 6px;
+}
+.cot-lineas-head > span { font-size: 12.5px; font-weight: 700; color: var(--texto-tenue); text-transform: uppercase; }
+.cot-lineas-lista { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
+.cot-linea-ed {
+  display: grid; grid-template-columns: 1fr 60px 84px 84px 24px; gap: 8px; align-items: center;
+  padding: 6px 4px; border-bottom: 1px solid var(--borde);
+}
+.cot-linea-ed input {
+  border: 1px solid transparent; background: transparent; color: var(--texto);
+  font-size: 13.5px; padding: 4px 6px; border-radius: 6px;
+}
+.cot-linea-ed input:focus { border-color: var(--acento-borde); background: var(--superficie-2); outline: none; }
+.cot-le-total { font-weight: 700; font-size: 13.5px; }
+.cot-le-quitar {
+  border: none; background: transparent; color: var(--texto-debil); font-size: 16px;
+  cursor: pointer; line-height: 1;
+}
+.cot-le-quitar:hover { color: var(--peligro); }
+
+.cot-cm-total {
+  text-align: right; font-size: 15px; font-weight: 800; margin-top: 10px;
+  padding-top: 10px; border-top: 1px solid var(--borde);
+}
+
+/* ============================================================================
+   Dinero — agenda financiera. Pegar al final de styles.css.
+   ============================================================================ */
+
+/* --- Selector de libro (negocio / personal) --- */
+.din-libros { display: flex; gap: 8px; margin-bottom: 16px; }
+.din-libro {
+  flex: 1; display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 16px; border-radius: var(--radio-md, 12px);
+  border: 1px solid var(--borde); background: var(--superficie-2);
+  cursor: pointer; text-align: left; font-family: inherit;
+  transition: all 0.15s ease;
+}
+.din-libro:hover { border-color: var(--acento-borde); }
+.din-libro--on { border-color: var(--acento); background: var(--acento-suave); }
+.din-libro-n { font-size: 14.5px; font-weight: 800; color: var(--texto); }
+.din-libro-s { font-size: 12px; color: var(--texto-tenue); }
+
+/* --- Avisos --- */
+.din-avisos { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.din-aviso {
+  padding: 11px 14px; border-radius: var(--radio-md, 10px);
+  border: 1px solid var(--borde); display: flex; flex-direction: column; gap: 2px;
+}
+.din-aviso--peligro { border-color: var(--peligro-borde); background: var(--peligro-suave); }
+.din-aviso--alerta  { border-color: var(--alerta-borde);  background: var(--alerta-suave); }
+.din-aviso--info    { border-color: var(--acento-borde);  background: var(--acento-suave); }
+.din-aviso-titulo { font-size: 14px; font-weight: 700; color: var(--texto); }
+.din-aviso-detalle { font-size: 12.5px; color: var(--texto-tenue); }
+
+/* --- El número grande --- */
+.din-hero {
+  border-radius: var(--radio-md, 14px); border: 1px solid var(--borde);
+  background: var(--superficie-1); padding: 24px; margin-bottom: 10px;
+  position: relative; overflow: hidden;
+}
+.din-hero::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+.din-hero--bien::before { background: var(--exito); }
+.din-hero--mal::before { background: var(--peligro); }
+.din-hero-lbl {
+  display: block; font-size: 12px; font-weight: 700; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--texto-tenue);
+}
+.din-hero-num {
+  display: block; font-size: 44px; font-weight: 800; letter-spacing: -1.5px;
+  line-height: 1.1; margin: 6px 0 10px;
+}
+.din-hero--bien .din-hero-num { color: var(--exito); }
+.din-hero--mal .din-hero-num { color: var(--peligro); }
+.din-hero-desglose { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--texto-tenue); }
+.din-hero-desglose b { color: var(--texto); font-weight: 700; }
+
+/* --- Punto de equilibrio (negocio) --- */
+.din-equilibrio {
+  border-radius: var(--radio-md, 14px); border: 1px solid var(--acento-borde);
+  background: var(--acento-suave); padding: 15px 18px; margin-bottom: 12px;
+}
+.din-equilibrio--ok { border-color: var(--exito-borde); background: var(--exito-suave); }
+.din-eq-titulo { display: block; font-size: 15px; font-weight: 700; color: var(--texto); }
+.din-eq-sub { display: block; font-size: 12.5px; color: var(--texto-tenue); margin-top: 3px; line-height: 1.45; }
+.din-eq-barra { height: 6px; border-radius: 3px; background: var(--superficie-3); margin-top: 11px; overflow: hidden; }
+.din-eq-relleno { height: 6px; border-radius: 3px; background: var(--acento); transition: width 0.4s ease; }
+.din-equilibrio--ok .din-eq-relleno { background: var(--exito); }
+
+/* --- El puente entre libros --- */
+.din-puente {
+  border-radius: var(--radio-md, 14px); border: 1px dashed var(--acento-borde);
+  background: var(--superficie-2); padding: 14px 18px; margin-bottom: 12px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.din-puente-titulo { font-size: 14.5px; font-weight: 700; color: var(--texto); }
+.din-puente-sub { font-size: 12.5px; color: var(--texto-tenue); line-height: 1.45; }
+
+/* --- Mini tarjetas --- */
+.din-mini-fila {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px; margin-bottom: 16px;
+}
+.din-mini {
+  padding: 12px 14px; border-radius: var(--radio-md, 10px);
+  border: 1px solid var(--borde); background: var(--superficie-1);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.din-mini-lbl { font-size: 11.5px; color: var(--texto-tenue); font-weight: 600; }
+.din-mini-val { font-size: 18px; font-weight: 800; color: var(--texto); }
+.din-mini--bien .din-mini-val { color: var(--exito); }
+.din-mini--mal .din-mini-val { color: var(--peligro); }
+
+/* --- Rejilla --- */
+.din-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+@media (max-width: 1150px) { .din-grid { grid-template-columns: 1fr; } }
+.din-panel { margin-bottom: 14px; }
+
+/* --- Calendario --- */
+.din-cal {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px;
+}
+.din-cal-dow {
+  text-align: center; font-size: 10.5px; font-weight: 800;
+  color: var(--texto-debil); padding-bottom: 4px;
+}
+.din-cal-vacio { aspect-ratio: 1; }
+.din-cal-dia {
+  aspect-ratio: 1; border-radius: 8px; position: relative;
+  border: 1px solid transparent; background: var(--superficie-2);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-family: inherit; transition: all 0.12s ease;
+}
+.din-cal-dia:hover { border-color: var(--acento-borde); }
+.din-cal-dia--hoy { border-color: var(--acento); }
+.din-cal-dia--sel { background: var(--acento-suave); border-color: var(--acento); }
+.din-cal-num { font-size: 12px; font-weight: 700; color: var(--texto-tenue); }
+.din-cal-dia--hoy .din-cal-num { color: var(--acento); }
+.din-cal-punto {
+  position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
+  width: 16px; height: 3px; border-radius: 2px; background: var(--peligro);
+}
+.din-cal-fijo {
+  position: absolute; top: 4px; right: 4px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--alerta);
+}
+
+/* --- Por pagar --- */
+.din-prox {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 4px; border-bottom: 1px solid var(--borde);
+  background: transparent; border-left: none; border-right: none; border-top: none;
+  cursor: pointer; text-align: left; font-family: inherit;
+}
+.din-prox:last-child { border-bottom: none; }
+.din-prox:hover { background: var(--superficie-2); }
+.din-prox-dia {
+  font-size: 10.5px; font-weight: 800; color: var(--alerta); flex-shrink: 0;
+  text-transform: uppercase; letter-spacing: 0.3px; min-width: 48px;
+}
+.din-prox-dia--vencido { color: var(--peligro); }
+.din-prox-concepto { flex: 1; font-size: 13.5px; font-weight: 600; color: var(--texto); }
+.din-prox-monto { font-weight: 700; font-size: 13.5px; }
+
+/* --- Presupuestos --- */
+.din-presu { padding: 8px 0; }
+.din-presu-fila { display: flex; justify-content: space-between; font-size: 13px; color: var(--texto); }
+.din-presu-lim { color: var(--texto-debil); font-weight: 400; }
+.din-presu-barra { height: 5px; border-radius: 3px; background: var(--superficie-3); margin-top: 5px; overflow: hidden; }
+.din-presu-relleno { height: 5px; border-radius: 3px; background: var(--acento); }
+.din-presu--cerca .din-presu-relleno { background: var(--alerta); }
+.din-presu--excedido .din-presu-relleno { background: var(--peligro); }
+.din-presu--excedido .din-presu-fila { color: var(--peligro); font-weight: 700; }
+
+.din-presu-edit { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+.din-presu-campo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.din-presu-campo span { font-size: 13.5px; color: var(--texto); }
+.din-presu-campo input { max-width: 130px; text-align: right; }
+
+/* --- Categorías --- */
+.din-cat { padding: 7px 0; }
+.din-cat-fila { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--texto-tenue); }
+.din-cat-pct { color: var(--texto-debil); font-size: 11px; }
+.din-cat-barra { height: 4px; border-radius: 2px; background: var(--superficie-3); margin-top: 4px; overflow: hidden; }
+.din-cat-relleno { height: 4px; border-radius: 2px; background: var(--acento); opacity: 0.7; }
+
+/* --- Movimientos --- */
+.din-lista { display: flex; flex-direction: column; }
+.din-mov { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--borde); }
+.din-mov:last-child { border-bottom: none; }
+.din-mov-signo {
+  width: 24px; height: 24px; border-radius: 7px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800;
+}
+.din-mov-signo--gasto { background: var(--peligro-suave); color: var(--peligro); }
+.din-mov-signo--ingreso { background: var(--exito-suave); color: var(--exito); }
+.din-mov-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.din-mov-concepto { font-size: 13.5px; font-weight: 600; color: var(--texto); }
+.din-mov-meta { font-size: 11.5px; color: var(--texto-tenue); }
+.din-mov-monto { font-weight: 700; font-size: 13.5px; }
+.din-mov-monto--ingreso { color: var(--exito); }
+
+/* --- Captura --- */
+.din-clase-sel {
+  display: flex; gap: 6px; margin-bottom: 14px;
+  background: var(--superficie-2); padding: 4px; border-radius: var(--radio-md, 10px);
+}
+.din-clase {
+  flex: 1; padding: 9px; border-radius: 8px; border: none; background: transparent;
+  color: var(--texto-tenue); font-size: 14px; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+}
+.din-clase--on { background: var(--acento); color: var(--acento-texto); }
+.din-monto-input {
+  font-size: 30px !important; font-weight: 800; text-align: center;
+  padding: 12px !important; letter-spacing: -0.5px;
+}
+.din-cat-label {
+  font-size: 12px; font-weight: 700; color: var(--texto-tenue);
+  text-transform: uppercase; letter-spacing: 0.5px; margin: 14px 0 8px;
+}
+.din-cat-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.din-cat-chip {
+  padding: 8px 13px; border-radius: 999px; border: 1px solid var(--borde);
+  background: var(--superficie-2); color: var(--texto-tenue);
+  font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+  transition: all 0.14s ease;
+}
+.din-cat-chip:hover { border-color: var(--acento); color: var(--texto); }
+.din-cat-chip--on { background: var(--acento); border-color: var(--acento); color: var(--acento-texto); font-weight: 700; }
+
+/* --- Gastos fijos --- */
+.din-fijos-total {
+  padding: 12px 14px; border-radius: var(--radio-md, 10px);
+  background: var(--acento-suave); border: 1px solid var(--acento-borde);
+  font-size: 13.5px; color: var(--texto); margin-bottom: 14px;
+}
+.din-fijos-lista { max-height: 40vh; overflow-y: auto; margin-bottom: 14px; }
+.din-fijo { display: flex; align-items: center; gap: 11px; padding: 10px 2px; border-bottom: 1px solid var(--borde); }
+.din-fijo--pagado { opacity: 0.5; }
+.din-fijo-dia {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--superficie-3); color: var(--texto-tenue); font-size: 12.5px; font-weight: 800;
+}
+.din-fijo-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.din-fijo-concepto { font-size: 13.5px; font-weight: 700; color: var(--texto); }
+.din-fijo-meta { font-size: 11.5px; color: var(--texto-tenue); }
+.din-fijo-monto { font-weight: 700; font-size: 13.5px; }
+.din-fijo-alta { display: flex; gap: 7px; margin-bottom: 10px; }
+.din-fijo-alta input { flex: 1; min-width: 0; }
+.din-fijo-alta input#gf-monto { max-width: 110px; }
+.din-fijo-alta input#gf-dia { max-width: 70px; }
+
+/* --- Arranque --- */
+.din-arranque {
+  max-width: 540px; margin: 36px auto; text-align: center;
+  padding: 32px 28px; border-radius: var(--radio-md, 14px);
+  border: 1px solid var(--borde); background: var(--superficie-1);
+}
+.din-arranque-ico {
+  width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--acento-suave); color: var(--acento);
+}
+.din-arranque-ico svg { width: 28px; height: 28px; }
+.din-arranque h2 { font-size: 21px; margin: 0 0 12px; }
+.din-arranque p { font-size: 14px; color: var(--texto-tenue); line-height: 1.6; margin: 0 0 12px; }
+.din-arranque-btns { display: flex; gap: 10px; justify-content: center; margin-top: 22px; }
+
+/* ============================================================================
+   Etiquetado NOM-051
+   ============================================================================ */
+
+/* Franja de vigencia: siempre visible, la norma ya cambió de fecha 2 veces */
+.etq-vigencia {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 9px 14px; border-radius: var(--radio-md, 10px);
+  background: var(--superficie-2); border: 1px solid var(--borde);
+  font-size: 12.5px; color: var(--texto-tenue); margin-bottom: 16px;
+}
+.etq-vig-punto { width: 7px; height: 7px; border-radius: 50%; background: var(--exito); flex-shrink: 0; }
+.etq-vigencia b { color: var(--texto); }
+.etq-vig-sep { color: var(--texto-debil); }
+.etq-vig-fecha { color: var(--texto-debil); }
+
+/* Arranque */
+.etq-arranque {
+  max-width: 560px; margin: 32px auto; text-align: center;
+  padding: 32px 28px; border-radius: var(--radio-md, 14px);
+  border: 1px solid var(--borde); background: var(--superficie-1);
+}
+.etq-arranque h2 { font-size: 20px; margin: 0 0 14px; }
+.etq-arranque p { font-size: 14px; color: var(--texto-tenue); line-height: 1.65; margin: 0 0 12px; }
+.etq-arranque-nota { font-size: 12.5px !important; color: var(--texto-debil) !important; }
+
+/* Lista */
+.etq-lista { display: flex; flex-direction: column; gap: 8px; }
+.etq-fila {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 13px 16px; border-radius: var(--radio-md, 12px);
+  border: 1px solid var(--borde); background: var(--superficie-1);
+  cursor: pointer; text-align: left; font-family: inherit;
+}
+.etq-fila:hover { border-color: var(--acento-borde); }
+.etq-fila-cont {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  background: var(--peligro-suave); color: var(--peligro);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 15px;
+}
+.etq-fila-cont--cero { background: var(--exito-suave); color: var(--exito); }
+.etq-fila-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.etq-fila-nombre { font-size: 14px; font-weight: 700; color: var(--texto); }
+.etq-fila-meta { font-size: 12px; color: var(--texto-tenue); }
+.etq-fila-mini { display: flex; gap: 4px; flex-shrink: 0; }
+.etq-oct-mini {
+  width: 14px; height: 14px; background: #000;
+  clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
+}
+
+/* Editor con pestañas */
+.etq-ed-head { margin-bottom: 16px; }
+.etq-tabs {
+  display: flex; gap: 4px; padding: 4px; margin-top: 12px;
+  background: var(--superficie-2); border-radius: var(--radio-md, 10px);
+}
+.etq-tab {
+  flex: 1; padding: 9px; border: none; background: transparent; border-radius: 8px;
+  color: var(--texto-tenue); font-size: 13.5px; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+}
+.etq-tab--on { background: var(--acento); color: var(--acento-texto); }
+
+.etq-lbl {
+  font-size: 12px; font-weight: 700; color: var(--texto-tenue);
+  text-transform: uppercase; letter-spacing: 0.5px; margin: 18px 0 6px;
+}
+.etq-checks { display: flex; flex-wrap: wrap; gap: 16px; margin: 8px 0 4px; }
+.etq-checks label { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--texto); }
+
+/* Resultado */
+.etq-resultado { margin-top: 18px; }
+.etq-ok {
+  padding: 14px; border-radius: var(--radio-md, 10px);
+  background: var(--exito-suave); border: 1px solid var(--exito-borde);
+  color: var(--exito); font-weight: 700; font-size: 14px; text-align: center;
+}
+.etq-ok-nota {
+  display: block; font-weight: 500; font-size: 12.5px;
+  color: var(--texto-tenue); margin-top: 7px; line-height: 1.5;
+}
+.etq-res-titulo { font-size: 14px; font-weight: 700; color: var(--texto); margin-bottom: 12px; }
+
+.etq-octagonos { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.etq-oct-caja { display: flex; flex-direction: column; align-items: center; gap: 7px; width: 118px; }
+.etq-oct-caja--ancha { width: 160px; }
+.etq-oct-razon { font-size: 10.5px; color: var(--texto-tenue); text-align: center; line-height: 1.35; }
+
+.etq-leyendas { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.etq-leyenda-caja { display: flex; flex-direction: column; gap: 5px; }
+.etq-leyenda-caja .etq-oct-razon { text-align: left; }
+
+/* Aviso del sello con número (envases ≤40 cm²) */
+.etq-numero-aviso {
+  padding: 11px 14px; border-radius: var(--radio-md, 10px);
+  background: var(--acento-suave); border: 1px solid var(--acento-borde);
+  font-size: 12.5px; color: var(--texto); line-height: 1.55; margin-bottom: 14px;
+}
+.etq-detalle-sellos { margin-top: 10px; }
+.etq-detalle-sellos summary {
+  font-size: 12.5px; color: var(--acento); cursor: pointer; font-weight: 600;
+}
+.etq-razon-fila { font-size: 12px; color: var(--texto-tenue); padding: 5px 0 0 14px; line-height: 1.5; }
+
+/* Especificaciones de impresión */
+.etq-impresion {
+  margin-top: 18px; padding: 14px; border-radius: var(--radio-md, 10px);
+  background: var(--superficie-2); border: 1px solid var(--borde);
+}
+.etq-imp-titulo {
+  font-size: 11.5px; font-weight: 800; color: var(--texto-tenue);
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 9px;
+}
+.etq-imp-fila {
+  display: flex; justify-content: space-between; gap: 14px;
+  font-size: 12.5px; padding: 4px 0; color: var(--texto-tenue);
+}
+.etq-imp-fila b { color: var(--texto); text-align: right; }
+.etq-imp-nota { font-size: 12.5px; color: var(--texto-tenue); line-height: 1.5; }
+
+.etq-futuro {
+  margin-top: 16px; padding: 12px 14px; border-radius: var(--radio-md, 10px);
+  background: var(--alerta-suave); border: 1px solid var(--alerta-borde);
+  font-size: 12.5px; color: var(--texto); line-height: 1.55;
+}
+
+/* Checklist */
+.etq-check-progreso {
+  font-size: 13px; font-weight: 700; color: var(--acento);
+  margin: 12px 0; padding: 8px 12px; border-radius: 8px;
+  background: var(--acento-suave); display: inline-block;
+}
+.etq-check-lista { display: flex; flex-direction: column; gap: 2px; }
+.etq-check {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 10px 4px; border-bottom: 1px solid var(--borde);
+}
+.etq-check:last-child { border-bottom: none; }
+.etq-check-marca {
+  width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0;
+  border: 1px solid var(--borde); background: var(--superficie-2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 800; color: var(--exito);
+}
+.etq-check--ok .etq-check-marca { background: var(--exito-suave); border-color: var(--exito-borde); }
+.etq-check-n { display: block; font-size: 13.5px; font-weight: 600; color: var(--texto); }
+.etq-check--ok .etq-check-n { color: var(--texto-tenue); }
+.etq-check-ref {
+  font-size: 10.5px; font-weight: 500; color: var(--texto-debil);
+  background: var(--superficie-2); padding: 1px 6px; border-radius: 4px; margin-left: 4px;
+}
+.etq-check-ayuda { display: block; font-size: 11.5px; color: var(--texto-debil); margin-top: 2px; line-height: 1.45; }
+
+/* Trámites y reglas */
+.etq-aclara {
+  padding: 14px; border-radius: var(--radio-md, 10px);
+  background: var(--acento-suave); border: 1px solid var(--acento-borde);
+  font-size: 13.5px; line-height: 1.6; color: var(--texto); margin-bottom: 18px;
+}
+.etq-tramite { padding: 14px 0; border-bottom: 1px solid var(--borde); }
+.etq-tramite:last-of-type { border-bottom: none; }
+.etq-tramite-n { font-size: 14.5px; font-weight: 700; color: var(--texto); }
+.etq-tramite-meta { font-size: 12px; color: var(--texto-tenue); margin: 3px 0 6px; }
+.etq-tramite-det { font-size: 13px; color: var(--texto-tenue); line-height: 1.6; }
+.etq-fuente {
+  margin-top: 16px; padding: 12px; border-radius: 8px;
+  background: var(--superficie-2); font-size: 11.5px;
+  color: var(--texto-debil); line-height: 1.6;
+}
+
+/* ============================================================================
+   Fotos de producto — catálogo abierto. Pegar al final de styles.css.
+   ============================================================================ */
+
+.m-foto-catalogo { margin-bottom: 16px; }
+.m-foto-catalogo-btn {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 10px 12px; border-radius: var(--radio-md, 10px);
+  border: 1px solid var(--acento-borde); background: var(--acento-suave);
+  cursor: pointer; text-align: left; font-family: inherit;
+}
+.m-foto-catalogo-btn:hover { border-color: var(--acento); }
+.m-foto-catalogo-btn img {
+  width: 44px; height: 44px; border-radius: 8px; object-fit: cover;
+  background: #fff; flex-shrink: 0;
+}
+.m-foto-catalogo-btn span { display: flex; flex-direction: column; gap: 2px; }
+.m-foto-catalogo-btn b { font-size: 13px; color: var(--texto); font-weight: 700; }

@@ -35,6 +35,10 @@ pub struct Producto {
     pub stock_minimo: f64,
     pub favorito: bool,
     pub es_kit: bool,
+    /// Ruta ABSOLUTA local del archivo de foto (o None). LOCAL-ONLY: no
+    /// sincroniza — el archivo en sí solo existe en el disco de ESTE
+    /// dispositivo, así que la ruta no significaría nada en otra caja.
+    pub imagen_ruta: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,6 +56,10 @@ pub struct NuevoProducto {
     pub unidad: String,
     pub stock_minimo: f64,
     pub favorito: bool,
+    /// Ruta local de la foto, si ya se copió con `prod_guardar_imagen` antes
+    /// de crear. None = sin foto (se ve el icono del departamento).
+    #[serde(default)]
+    pub imagen_ruta: Option<String>,
     /// Si es un kit (paquete). Por defecto false (producto normal).
     #[serde(default)]
     pub es_kit: bool,
@@ -75,6 +83,8 @@ pub struct EditarProducto {
     pub unidad: String,
     pub stock_minimo: f64,
     pub favorito: bool,
+    #[serde(default)]
+    pub imagen_ruta: Option<String>,
     #[serde(default)]
     pub es_kit: bool,
     #[serde(default)]
@@ -120,6 +130,7 @@ fn fila_a_producto(row: &rusqlite::Row, ver_costos: bool) -> rusqlite::Result<Pr
         stock_minimo: row.get("stock_minimo")?,
         favorito: row.get::<_, i64>("favorito")? != 0,
         es_kit: row.get::<_, i64>("es_kit")? != 0,
+        imagen_ruta: row.get("imagen_ruta")?,
     })
 }
 
@@ -136,7 +147,7 @@ pub fn listar(
     let mut sql = String::from(
         "SELECT id, codigo_barras, nombre, categoria_id, precio_venta_centavos,
                 costo_centavos, precio_mayoreo_centavos, cantidad_mayoreo, iva_tasa,
-                controla_stock, stock, unidad, stock_minimo, favorito, es_kit
+                controla_stock, stock, unidad, stock_minimo, favorito, es_kit, imagen_ruta
          FROM productos
          WHERE eliminado = 0",
     );
@@ -189,7 +200,7 @@ pub fn por_codigo(con: &Connection, rol: &str, codigo: &str) -> Result<Option<Pr
     con.query_row(
         "SELECT id, codigo_barras, nombre, categoria_id, precio_venta_centavos,
                 costo_centavos, precio_mayoreo_centavos, cantidad_mayoreo, iva_tasa,
-                controla_stock, stock, unidad, stock_minimo, favorito, es_kit
+                controla_stock, stock, unidad, stock_minimo, favorito, es_kit, imagen_ruta
          FROM productos WHERE codigo_barras = ?1 AND eliminado = 0",
         rusqlite::params![codigo_norm],
         |row| fila_a_producto(row, ver),
@@ -240,12 +251,12 @@ pub fn crear(con: &Connection, dispositivo_id: &str, d: &NuevoProducto) -> Resul
            (id, codigo_barras, nombre, categoria_id, precio_venta_centavos, costo_centavos,
             precio_mayoreo_centavos, cantidad_mayoreo, iva_tasa, controla_stock, stock, unidad,
             stock_minimo, imagen_ruta, favorito, creado_en, actualizado_en, eliminado, dispositivo_id, es_kit)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,NULL,?14,?15,?15,0,?16,?17)",
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?18,?14,?15,?15,0,?16,?17)",
         rusqlite::params![
             id, codigo, nombre, d.categoria_id, d.precio_venta_centavos, costo,
             d.precio_mayoreo_centavos, d.cantidad_mayoreo, d.iva_tasa,
             controla as i64, stock_ini, d.unidad, d.stock_minimo,
-            d.favorito as i64, ts, dispositivo_id, d.es_kit as i64
+            d.favorito as i64, ts, dispositivo_id, d.es_kit as i64, d.imagen_ruta
         ],
     )
     .map_err(|e| format!("error al crear producto: {e}"))?;
@@ -300,6 +311,17 @@ pub fn editar(con: &Connection, d: &EditarProducto) -> Result<(), String> {
     }
 
     let ts = ahora();
+    // Foto anterior (para borrar el archivo viejo DESPUÉS de que el UPDATE
+    // tenga éxito, nunca antes — si algo falla, no se pierde el archivo).
+    let imagen_anterior: Option<String> = con
+        .query_row(
+            "SELECT imagen_ruta FROM productos WHERE id = ?1",
+            rusqlite::params![d.id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("error al leer producto: {e}"))?
+        .flatten();
     // Costo del kit: por defecto suma de componentes (ajustable).
     let costo = if d.es_kit {
         match d.costo_centavos {
@@ -316,17 +338,25 @@ pub fn editar(con: &Connection, d: &EditarProducto) -> Result<(), String> {
                codigo_barras = ?2, nombre = ?3, categoria_id = ?4, precio_venta_centavos = ?5,
                costo_centavos = ?6, precio_mayoreo_centavos = ?7, cantidad_mayoreo = ?8,
                iva_tasa = ?9, controla_stock = ?10, unidad = ?11, stock_minimo = ?12,
-               favorito = ?13, actualizado_en = ?14, es_kit = ?15
+               favorito = ?13, actualizado_en = ?14, es_kit = ?15, imagen_ruta = ?16
              WHERE id = ?1 AND eliminado = 0",
             rusqlite::params![
                 d.id, codigo, nombre, d.categoria_id, d.precio_venta_centavos, costo,
                 d.precio_mayoreo_centavos, d.cantidad_mayoreo, d.iva_tasa,
-                controla as i64, d.unidad, d.stock_minimo, d.favorito as i64, ts, d.es_kit as i64
+                controla as i64, d.unidad, d.stock_minimo, d.favorito as i64, ts, d.es_kit as i64,
+                d.imagen_ruta,
             ],
         )
         .map_err(|e| format!("error al editar producto: {e}"))?;
     if n == 0 {
         return Err("No se encontró el producto.".into());
+    }
+    // La foto cambió (nueva o se quitó): borra el archivo anterior en disco.
+    // Best-effort — si falla, no bloquea nada, ya se guardó lo importante.
+    if imagen_anterior.as_deref() != d.imagen_ruta.as_deref() {
+        if let Some(vieja) = &imagen_anterior {
+            super::imagenes::borrar(vieja);
+        }
     }
 
     // Si es kit, actualizar sus componentes. Si dejó de ser kit, limpiarlos.

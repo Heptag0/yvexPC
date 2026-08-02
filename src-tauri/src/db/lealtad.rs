@@ -6,8 +6,12 @@
 //!   - Puntos en enteros; dinero SIEMPRE en centavos enteros.
 //!   - El cliente de lealtad ES el mismo de `clientes` (crédito): no hay otra
 //!     tabla de clientes, pero los puntos NO se mezclan con la deuda.
-//!   - ⚠️ LOCAL-ONLY: nada de aquí se encola a `cola_sync` (el servidor no
-//!     conoce `puntos_movimientos` ni las columnas nuevas; igual que el móvil).
+//!   - ✅ SINCRONIZADO: los movimientos de puntos se encolan como bitácora de
+//!     solo-inserción. ⚠️ El SALDO (`clientes.puntos`) NUNCA se sube como
+//!     columna directa — lo recalcula el servidor sumando los movimientos
+//!     (mismo principio que el stock: si dos cajas suman/restan puntos al
+//!     mismo tiempo, no se pueden pisar). El saldo real siempre llega de
+//!     vuelta al bajar `clientes`.
 //!   - NINGÚN canje se aplica solo: aquí solo se registran movimientos YA
 //!     confirmados por el usuario en pantalla.
 //!
@@ -22,7 +26,7 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use chrono::TimeZone;
 
-use super::comun::{ahora, nuevo_id};
+use super::comun::{ahora, encolar_sync, nuevo_id};
 
 // ============================================================================
 // Reglas del programa
@@ -82,13 +86,13 @@ pub fn guardar_reglas(con: &Connection, r: &ReglasLealtad) -> Result<(), String>
         ("lealtad_valor_punto_centavos", r.valor_punto_centavos.to_string()),
         ("lealtad_tope_descuento_pct", r.tope_descuento_pct.to_string()),
     ];
+    // Reusa config::set (ahora pública) en vez de un INSERT crudo: así estas
+    // reglas SÍ suben a la nube por la entidad "config" que ya existe, y
+    // bajan a las otras cajas — sin esto, cada caja podía tener sus propias
+    // reglas y calcular puntos distinto para la misma compra.
     for (clave, valor) in pares {
-        con.execute(
-            "INSERT INTO config (clave, valor) VALUES (?1, ?2)
-             ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
-            rusqlite::params![clave, valor],
-        )
-        .map_err(|e| format!("error al guardar {clave}: {e}"))?;
+        super::config::set(con, clave, &valor)
+            .map_err(|e| format!("error al guardar {clave}: {e}"))?;
     }
     Ok(())
 }
@@ -188,11 +192,19 @@ pub fn asegurar_codigo(con: &Connection, cliente_id: &str) -> Result<String, Str
         Some(Some(c)) if !c.is_empty() => Ok(c),
         _ => {
             let codigo = generar_codigo(con)?;
+            let ts = ahora();
             con.execute(
                 "UPDATE clientes SET codigo = ?2, actualizado_en = ?3 WHERE id = ?1",
-                rusqlite::params![cliente_id, codigo, ahora()],
+                rusqlite::params![cliente_id, codigo, ts],
             )
             .map_err(|e| format!("error al asignar código: {e}"))?;
+            // Payload parcial (id + codigo + actualizado_en): el receptor lo
+            // reconoce como update parcial y solo toca esas columnas.
+            let payload = serde_json::json!({
+                "id": cliente_id, "codigo": codigo, "actualizado_en": ts,
+            });
+            encolar_sync(con, "clientes", cliente_id, "update", &payload)
+                .map_err(|e| format!("error al encolar código de cliente: {e}"))?;
             Ok(codigo)
         }
     }
@@ -255,6 +267,7 @@ pub struct ResultadoVisita {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)] // espejo del tipo del móvil; el PC aún devuelve (i64, i64) suelto en vez de este struct
 pub struct ResultadoAcumulacion {
     pub otorgados: i64,
     pub saldo: i64,
@@ -271,8 +284,12 @@ fn inicio_hoy_iso() -> String {
     dt.with_timezone(&chrono::Utc).to_rfc3339()
 }
 
-/// Inserta un movimiento y actualiza el saldo del cliente, DENTRO de una
-/// transacción ya abierta. LOCAL-ONLY: no encola nada.
+/// Inserta un movimiento y actualiza el saldo LOCAL del cliente (optimista,
+/// para que el cajero vea el número al instante), DENTRO de una transacción
+/// ya abierta. El movimiento se encola para subir; el SALDO no se sube nunca
+/// como número — el servidor lo recalcula sumando movimientos y lo devuelve
+/// ya correcto en la próxima bajada de `clientes` (así converge aunque otra
+/// caja también le haya movido puntos a este cliente mientras tanto).
 pub fn registrar_movimiento_en_tx(
     con: &Connection,
     cliente_id: &str,
@@ -283,11 +300,12 @@ pub fn registrar_movimiento_en_tx(
     dispositivo_id: &str,
 ) -> Result<i64, String> {
     let ts = ahora();
+    let id = nuevo_id();
     con.execute(
         "INSERT INTO puntos_movimientos
            (id, cliente_id, venta_id, tipo, puntos, nota, creado_en, dispositivo_id)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-        rusqlite::params![nuevo_id(), cliente_id, venta_id, tipo, puntos, nota, ts, dispositivo_id],
+        rusqlite::params![id, cliente_id, venta_id, tipo, puntos, nota, ts, dispositivo_id],
     )
     .map_err(|e| format!("error al registrar puntos: {e}"))?;
     con.execute(
@@ -295,6 +313,14 @@ pub fn registrar_movimiento_en_tx(
         rusqlite::params![cliente_id, puntos, ts],
     )
     .map_err(|e| format!("error al actualizar puntos: {e}"))?;
+
+    let payload = serde_json::json!({
+        "id": id, "cliente_id": cliente_id, "venta_id": venta_id, "tipo": tipo,
+        "puntos": puntos, "nota": nota, "creado_en": ts, "actualizado_en": ts,
+    });
+    encolar_sync(con, "puntos_movimientos", &id, "insert", &payload)
+        .map_err(|e| format!("error al encolar movimiento de puntos: {e}"))?;
+
     saldo_puntos(con, cliente_id)
 }
 

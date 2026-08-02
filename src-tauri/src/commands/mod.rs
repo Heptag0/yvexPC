@@ -1349,3 +1349,343 @@ pub fn lealtad_calcular_canje(
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     db_lealtad::calcular_canje(&con, &cliente_id, total_centavos, puntos_solicitados)
 }
+
+// ============================================================================
+// Proveedores y compras (LOCAL-ONLY: no se sincroniza a la nube todavía)
+// ============================================================================
+
+use crate::db::proveedores::{
+    self as db_proveedores, AvisoVisita, Compra, DatosCompra, DatosProveedor, Proveedor,
+    ProveedorResumen,
+};
+
+#[tauri::command]
+pub fn prov_listar(
+    estado: tauri::State<EstadoDb>,
+    filtro: Option<String>,
+) -> Result<Vec<ProveedorResumen>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    db_proveedores::listar(&con, filtro.as_deref())
+}
+
+#[tauri::command]
+pub fn prov_obtener(
+    estado: tauri::State<EstadoDb>,
+    id: String,
+) -> Result<Option<ProveedorResumen>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    db_proveedores::obtener(&con, &id)
+}
+
+#[tauri::command]
+pub fn prov_crear(
+    estado: tauri::State<EstadoDb>,
+    datos: DatosProveedor,
+) -> Result<Proveedor, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    db_proveedores::crear(&con, &disp, &datos)
+}
+
+#[tauri::command]
+pub fn prov_editar(
+    estado: tauri::State<EstadoDb>,
+    id: String,
+    datos: DatosProveedor,
+) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    db_proveedores::editar(&con, &id, &datos)
+}
+
+#[tauri::command]
+pub fn prov_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    db_proveedores::eliminar(&con, &id)
+}
+
+#[tauri::command]
+pub fn compra_registrar(
+    estado: tauri::State<EstadoDb>,
+    datos: DatosCompra,
+) -> Result<String, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    db_proveedores::registrar_compra(&con, &disp, &datos)
+}
+
+#[tauri::command]
+pub fn compra_historial(
+    estado: tauri::State<EstadoDb>,
+    proveedor_id: Option<String>,
+) -> Result<Vec<Compra>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    db_proveedores::historial_compras(&con, proveedor_id.as_deref())
+}
+
+#[tauri::command]
+pub fn compra_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    db_proveedores::eliminar_compra(&con, &id)
+}
+
+/// Avisos de visita para la tarjeta de Inicio ("mañana llega tu proveedor").
+/// `hoy` es "AAAA-MM-DD" en hora local, calculada por el frontend (mismo
+/// patrón que el resto de Inicio: la fecha de HOY la decide el reloj del
+/// dispositivo que está viendo la pantalla).
+#[tauri::command]
+pub fn prov_avisos_visita(
+    estado: tauri::State<EstadoDb>,
+    hoy: String,
+) -> Result<Vec<AvisoVisita>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    db_proveedores::avisos_de_visita(&con, &hoy)
+}
+
+// ============================================================================
+// Misiones de arranque ("Tu arranque" en Inicio)
+// ============================================================================
+
+use crate::db::misiones::{self, ProgresoMisiones};
+
+#[tauri::command]
+pub fn misiones_progreso(estado: tauri::State<EstadoDb>) -> Result<ProgresoMisiones, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    misiones::progreso(&con)
+}
+
+// ============================================================================
+// Foto de producto
+// ============================================================================
+
+/// Copia la imagen elegida por el usuario a la carpeta de datos de la app y
+/// devuelve la ruta final. NO toca la base de datos — el frontend manda esa
+/// ruta como `imagen_ruta` en el siguiente `prod_crear`/`prod_editar`.
+#[tauri::command]
+pub fn prod_guardar_imagen(app: tauri::AppHandle, ruta_origen: String) -> Result<String, String> {
+    crate::db::imagenes::guardar(&app, &ruta_origen)
+}
+
+/// Borra un archivo de imagen que se copió pero nunca quedó como la foto
+/// final de un producto (modal cancelado, o el usuario probó varias fotos
+/// antes de guardar). Best-effort: si ya no existe, no truena.
+#[tauri::command]
+pub fn prod_borrar_imagen(ruta: String) -> Result<(), String> {
+    crate::db::imagenes::borrar(&ruta);
+    Ok(())
+}
+
+// ============================================================================
+// Cotizaciones
+// ============================================================================
+
+use crate::db::cotizaciones::{self, Cotizacion, CotizacionResumen, DatosCotizacion};
+
+#[tauri::command]
+pub fn cot_listar(
+    estado: tauri::State<EstadoDb>,
+    filtro: Option<String>,
+    hoy: String,
+) -> Result<Vec<CotizacionResumen>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    cotizaciones::marcar_vencidas(&con, &hoy)?;
+    cotizaciones::listar(&con, filtro.as_deref())
+}
+
+#[tauri::command]
+pub fn cot_obtener(estado: tauri::State<EstadoDb>, id: String) -> Result<Option<Cotizacion>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    cotizaciones::obtener(&con, &id)
+}
+
+#[tauri::command]
+pub fn cot_crear(estado: tauri::State<EstadoDb>, datos: DatosCotizacion) -> Result<Cotizacion, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    cotizaciones::crear(&con, &disp, &datos)
+}
+
+#[tauri::command]
+pub fn cot_cancelar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    cotizaciones::cancelar(&con, &id)
+}
+
+#[tauri::command]
+pub fn cot_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    cotizaciones::eliminar(&con, &id)
+}
+
+/// Entrega la cotización lista para precargar el carrito de Venta. NO cobra
+/// nada — Venta cobra normal y, si tiene éxito, llama a `cot_marcar_convertida`.
+#[tauri::command]
+pub fn cot_preparar_para_venta(estado: tauri::State<EstadoDb>, id: String) -> Result<Cotizacion, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    cotizaciones::preparar_para_venta(&con, &id)
+}
+
+#[tauri::command]
+pub fn cot_marcar_convertida(
+    estado: tauri::State<EstadoDb>,
+    id: String,
+    venta_id: String,
+) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    cotizaciones::marcar_convertida(&con, &id, &venta_id)
+}
+
+// ============================================================================
+// Dinero: agenda financiera (negocio y personal)
+// ============================================================================
+
+use crate::db::finanzas::{
+    self, DatosGasto, DatosGastoFijo, DatosIngreso, DatosPresupuesto,
+    GastoFijo, Movimiento, ResumenFinanzas,
+};
+
+#[tauri::command]
+pub fn fin_resumen(
+    estado: tauri::State<EstadoDb>,
+    ambito: String,
+    hoy: String,
+) -> Result<ResumenFinanzas, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    finanzas::resumen(&con, &ambito, &hoy)
+}
+
+#[tauri::command]
+pub fn fin_movimientos(
+    estado: tauri::State<EstadoDb>,
+    ambito: String,
+    desde: String,
+    hasta: String,
+) -> Result<Vec<Movimiento>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    finanzas::listar_movimientos(&con, &ambito, &desde, &hasta)
+}
+
+#[tauri::command]
+pub fn fin_gasto_registrar(estado: tauri::State<EstadoDb>, datos: DatosGasto) -> Result<String, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    finanzas::registrar_gasto(&con, &disp, &datos)
+}
+
+#[tauri::command]
+pub fn fin_gasto_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    finanzas::eliminar_gasto(&con, &id)
+}
+
+#[tauri::command]
+pub fn fin_ingreso_registrar(estado: tauri::State<EstadoDb>, datos: DatosIngreso) -> Result<String, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    finanzas::registrar_ingreso(&con, &disp, &datos)
+}
+
+#[tauri::command]
+pub fn fin_ingreso_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    finanzas::eliminar_ingreso(&con, &id)
+}
+
+#[tauri::command]
+pub fn fin_fijos_listar(
+    estado: tauri::State<EstadoDb>,
+    ambito: String,
+    hoy: String,
+) -> Result<Vec<GastoFijo>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    finanzas::listar_fijos(&con, &ambito, &hoy)
+}
+
+#[tauri::command]
+pub fn fin_fijo_crear(estado: tauri::State<EstadoDb>, datos: DatosGastoFijo) -> Result<String, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    finanzas::crear_fijo(&con, &disp, &datos)
+}
+
+#[tauri::command]
+pub fn fin_fijo_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    finanzas::eliminar_fijo(&con, &id)
+}
+
+#[tauri::command]
+pub fn fin_presupuesto_guardar(
+    estado: tauri::State<EstadoDb>,
+    datos: DatosPresupuesto,
+) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    finanzas::guardar_presupuesto(&con, &disp, &datos)
+}
+
+// ============================================================================
+// Etiquetado NOM-051
+// ============================================================================
+
+use crate::db::etiquetas::{self, PerfilEtiqueta};
+
+#[tauri::command]
+pub fn etq_listar(estado: tauri::State<EstadoDb>) -> Result<Vec<PerfilEtiqueta>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    etiquetas::listar(&con)
+}
+
+#[tauri::command]
+pub fn etq_obtener(estado: tauri::State<EstadoDb>, id: String) -> Result<Option<PerfilEtiqueta>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    etiquetas::obtener(&con, &id)
+}
+
+#[tauri::command]
+pub fn etq_guardar(estado: tauri::State<EstadoDb>, perfil: PerfilEtiqueta) -> Result<String, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    etiquetas::guardar(&con, &disp, &perfil)
+}
+
+#[tauri::command]
+pub fn etq_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    etiquetas::eliminar(&con, &id)
+}
+
+// ============================================================================
+// Fotos de producto: catálogo abierto y quitar fondo
+// ============================================================================
+
+use crate::db::fotos_externas::{self, FotoCatalogo};
+
+/// Busca la foto de un producto conocido por su código de barras.
+/// `Ok(None)` es el caso normal (código artesanal, sin ficha) — no es error.
+#[tauri::command]
+pub fn prod_buscar_foto_catalogo(codigo_barras: String) -> Result<Option<FotoCatalogo>, String> {
+    fotos_externas::buscar_en_catalogo(&codigo_barras)
+}
+
+#[tauri::command]
+pub fn prod_descargar_foto_catalogo(app: tauri::AppHandle, url: String) -> Result<String, String> {
+    fotos_externas::descargar_a_local(&app, &url)
+}
+
+/// Se consulta al abrir el modal de producto, para no ofrecer un botón que
+/// va a fallar.
+#[tauri::command]
+pub fn prod_recorte_disponible(estado: tauri::State<EstadoDb>) -> Result<bool, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    Ok(fotos_externas::recorte_disponible(&con))
+}
+
+#[tauri::command]
+pub fn prod_quitar_fondo(
+    app: tauri::AppHandle,
+    estado: tauri::State<EstadoDb>,
+    ruta_local: String,
+) -> Result<String, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    fotos_externas::quitar_fondo(&app, &con, &ruta_local)
+}

@@ -55,7 +55,7 @@ fn get(con: &Connection, clave: &str) -> String {
     .unwrap_or_default()
 }
 
-fn set(con: &Connection, clave: &str, valor: &str) -> Result<(), String> {
+pub fn set(con: &Connection, clave: &str, valor: &str) -> Result<(), String> {
     con.execute(
         "INSERT INTO config (clave, valor) VALUES (?1, ?2)
          ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",

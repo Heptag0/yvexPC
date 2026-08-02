@@ -62,6 +62,36 @@ const MIGRACIONES: &[Migracion] = &[
         nombre: "008_lealtad",
         sql: include_str!("migrations/008_lealtad.sql"),
     },
+    Migracion {
+        version: 9,
+        nombre: "009_proveedores",
+        sql: include_str!("migrations/009_proveedores.sql"),
+    },
+    Migracion {
+        version: 10,
+        nombre: "010_categoria_icono",
+        sql: include_str!("migrations/010_categoria_icono.sql"),
+    },
+    Migracion {
+        version: 11,
+        nombre: "011_cotizaciones",
+        sql: include_str!("migrations/011_cotizaciones.sql"),
+    },
+    Migracion {
+        version: 12,
+        nombre: "012_finanzas",
+        sql: include_str!("migrations/012_finanzas.sql"),
+    },
+    Migracion {
+        version: 13,
+        nombre: "013_etiquetas",
+        sql: include_str!("migrations/013_etiquetas.sql"),
+    },
+    Migracion {
+        version: 14,
+        nombre: "014_etiquetas_exencion",
+        sql: include_str!("migrations/014_etiquetas_exencion.sql"),
+    },
 ];
 
 /// Asegura que exista la tabla de control de versión.

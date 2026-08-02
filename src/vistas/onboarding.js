@@ -10,7 +10,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { montarVinculacion, detenerPolling } from "../util/vinculacion_ui.js";
-import { TEMAS, ACENTOS, aplicarApariencia, hexAcento } from "../util/apariencia.js";
+import { TEMAS, TEMAS_INFO, ACENTOS, aplicarApariencia, hexAcento } from "../util/apariencia.js";
+import { GIROS, obtenerGiro, sugerenciasDepartamentos, crearDepartamentosElegidos } from "../util/giro.js";
 
 const ROLES = [
   { valor: "cajero", etiqueta: "Cajero" },
@@ -23,15 +24,16 @@ const datos = {
   negocio: "",
   rfc: "",
   cp: "",
+  giro: null,
   duenoNombre: "",
   duenoPin: "",
   equipo: [], // {nombre, pin, rol}
   tema: "nocturno",
-  acento: "morado",
+  acento: "violeta",
 };
 
 // Los pasos que cuentan para la barra de progreso (la bienvenida no cuenta).
-const PASOS = ["caja", "negocio", "dueno", "equipo", "apariencia", "nube"];
+const PASOS = ["caja", "negocio", "giro", "departamentos", "dueno", "equipo", "apariencia", "cierre", "nube"];
 
 export function montarOnboarding(contenedor, alTerminar) {
   contenedor.innerHTML = "";
@@ -122,6 +124,48 @@ export function montarOnboarding(contenedor, alTerminar) {
         datos.cp = $("#onb-cp").value.trim();
         avanzar();
       });
+    }
+
+    if (paso === "giro") {
+      wrap.querySelectorAll("[data-giro]").forEach((b) =>
+        b.addEventListener("click", () => {
+          datos.giro = b.dataset.giro;
+          // Nueva sugerencia fresca cada vez que cambia el giro — si el
+          // dueño ya había editado la lista de un giro anterior, se
+          // reemplaza por la del nuevo (evita mezclar departamentos de
+          // giros distintos sin que el dueño se dé cuenta).
+          datos.departamentos = sugerenciasDepartamentos(datos.giro);
+          render(); // re-pinta para marcar la tarjeta elegida
+        })
+      );
+      const cont = $("#onb-siguiente");
+      if (cont) cont.addEventListener("click", () => {
+        if (!datos.giro) return marcar($("#onb-err"), "Elige lo que más se parece a tu negocio.");
+        avanzar();
+      });
+    }
+
+    if (paso === "departamentos") {
+      wrap.querySelectorAll("[data-depto-check]").forEach((chk) =>
+        chk.addEventListener("change", () => {
+          const i = Number(chk.dataset.deptoCheck);
+          datos.departamentos[i].incluido = chk.checked;
+          wrap.querySelector(`[data-depto-fila="${i}"]`)?.classList.toggle("onb-depto--fuera", !chk.checked);
+        })
+      );
+      wrap.querySelectorAll("[data-depto-nombre]").forEach((inp) =>
+        inp.addEventListener("input", () => {
+          const i = Number(inp.dataset.deptoNombre);
+          datos.departamentos[i].nombre = inp.value;
+        })
+      );
+      const cont = $("#onb-siguiente");
+      if (cont) cont.addEventListener("click", avanzar);
+    }
+
+    if (paso === "cierre") {
+      const cont = $("#onb-siguiente");
+      if (cont) cont.addEventListener("click", avanzar);
     }
 
     if (paso === "dueno") {
@@ -263,17 +307,25 @@ export function montarOnboarding(contenedor, alTerminar) {
       // Evitar configurar dos veces si ya se hizo (al volver de la nube).
       if (!datos._configurado) {
         await invoke("configurar_pos", { payload });
-        // Guardar la apariencia elegida (tema + acento) en config.
+        // Guardar la apariencia elegida (tema + acento) y el giro en config.
         try {
           await invoke("config_guardar_claves", {
             claves: {
               apariencia_tema: datos.tema,
               apariencia_acento: datos.acento,
               zona_horaria: detectarZona(),
+              giro: datos.giro || "otro",
             },
             rol: "dueno",
           });
-        } catch (_) { /* apariencia es cosmética: si falla, no bloquea */ }
+        } catch (_) { /* apariencia y giro son cosméticos: si falla, no bloquea */ }
+        // Departamentos: SOLO los que el dueño dejó marcados en el paso de
+        // revisión (nunca se crean a ciegas, ya los vio y pudo editarlos).
+        try {
+          await crearDepartamentosElegidos(invoke, datos.departamentos);
+        } catch (e) {
+          console.warn("No se pudieron crear los departamentos:", e);
+        }
         datos._configurado = true;
       }
       despues();
@@ -326,7 +378,7 @@ function vistaPaso(paso) {
       <p class="onb-desc">El nombre aparecerá en los tickets. Los datos fiscales son opcionales (para facturar después).</p>
       <label class="onb-campo">
         <span>Nombre del negocio</span>
-        <input id="onb-negocio" placeholder="Modelorama Centro" />
+        <input id="onb-negocio" placeholder="Tienda de la Esquina" />
       </label>
       <div class="onb-fila-2">
         <label class="onb-campo">
@@ -339,6 +391,56 @@ function vistaPaso(paso) {
         </label>
       </div>
       <p id="onb-err" class="onb-hint onb-hint--warn"></p>`);
+  }
+  if (paso === "giro") {
+    return envolver(`
+      <h2 class="onb-h2">¿Qué vende tu negocio?</h2>
+      <p class="onb-desc">Con esto te sugerimos departamentos de arranque y te mostramos lo que más te va a servir. Lo puedes cambiar cuando quieras.</p>
+      <div class="onb-giros">
+        ${GIROS.map((g) => `
+          <button type="button" class="onb-giro ${g.id === datos.giro ? "onb-giro--activo" : ""}" data-giro="${g.id}">
+            <span class="onb-giro-ico">${iconoGiro(g.icono)}</span>
+            <span class="onb-giro-nombre">${g.nombre}</span>
+            <span class="onb-giro-frase">${g.frase}</span>
+          </button>`).join("")}
+      </div>
+      <p id="onb-err" class="onb-hint onb-hint--warn"></p>`,
+      { siguiente: "Continuar" });
+  }
+  if (paso === "departamentos") {
+    const lista = datos.departamentos || [];
+    const cuerpo = lista.length === 0
+      ? `<p class="onb-desc">Este giro no trae departamentos sugeridos — no hay problema, los creas cuando quieras desde Inventario.</p>`
+      : `
+        <p class="onb-desc">Te sugerimos estos según tu giro. Desmarca los que no uses, o cámbiales el nombre — se crean tal como los dejes aquí.</p>
+        <div class="onb-deptos">
+          ${lista.map((d, i) => `
+            <div class="onb-depto ${d.incluido ? "" : "onb-depto--fuera"}" data-depto-fila="${i}">
+              <input type="checkbox" data-depto-check="${i}" ${d.incluido ? "checked" : ""} id="onb-depto-chk-${i}" />
+              <span class="onb-depto-ico">${iconoGiro(d.icono || "puntos")}</span>
+              <input type="text" class="onb-depto-nombre" data-depto-nombre="${i}" value="${escapar(d.nombre)}" />
+            </div>`).join("")}
+        </div>`;
+    return envolver(`
+      <h2 class="onb-h2">Revisa tus departamentos</h2>
+      ${cuerpo}
+      <p id="onb-err" class="onb-hint onb-hint--warn"></p>`,
+      { siguiente: lista.length === 0 ? "Continuar" : "Crear y continuar" });
+  }
+  if (paso === "cierre") {
+    const giro = obtenerGiro(datos.giro);
+    return `
+      <div class="onb-paso onb-cierre">
+        <h2 class="onb-h2">Listo, ${escapar(datos.negocio || "tu negocio")}</h2>
+        <p class="onb-desc">Esto es lo que más te va a servir en ${escapar(giro.nombre.toLowerCase())}:</p>
+        <ul class="onb-sugerencias">
+          ${giro.sugerencias.slice(0, 3).map((s) => `<li>${escapar(s)}</li>`).join("")}
+        </ul>
+        <div class="onb-nav">
+          <button id="onb-atras" type="button" class="btn-sec">← Atrás</button>
+          <button id="onb-siguiente" type="button" class="btn-primario onb-siguiente">Continuar</button>
+        </div>
+      </div>`;
   }
   if (paso === "dueno") {
     return envolver(`
@@ -371,12 +473,6 @@ function vistaPaso(paso) {
       { siguiente: "Continuar" });
   }
   if (paso === "apariencia") {
-    const temasNombres = { nocturno: "Nocturno", amanecer: "Amanecer", brisa: "Brisa" };
-    const temasAlma = {
-      nocturno: "Oscuro y enfocado",
-      amanecer: "Claro y cálido",
-      brisa: "Claro y suave",
-    };
     return envolver(`
       <h2 class="onb-h2">Personaliza tu POS</h2>
       <p class="onb-desc">Elige el tema y color con el que te sientas cómodo. Podrás cambiarlo cuando quieras.</p>
@@ -387,8 +483,8 @@ function vistaPaso(paso) {
               <div class="onb-tema-barra"></div>
               <div class="onb-tema-punto" style="background:${hexAcento(datos.acento, t)}"></div>
             </div>
-            <div class="onb-tema-nombre">${temasNombres[t]}</div>
-            <div class="onb-tema-alma">${temasAlma[t]}</div>
+            <div class="onb-tema-nombre">${TEMAS_INFO[t].nombre}</div>
+            <div class="onb-tema-alma">${TEMAS_INFO[t].alma}</div>
           </button>`).join("")}
       </div>
       <div class="onb-acento-zona">
@@ -475,6 +571,25 @@ function escapar(s) {
   d.textContent = s;
   return d.innerHTML;
 }
+
+// SVG chico para las tarjetas de giro (24×24, currentColor).
+function iconoGiro(id) {
+  const RUTAS = {
+    tienda:   'M4 9l1.5-5h13L20 9M4 9h16M5 9v11h14V9M9 20v-6h6v6',
+    ropa:     'M9 4l-6 3 2 4 2-1v10h10V10l2 1 2-4-6-3a3 3 0 0 1-6 0z',
+    taza:     'M4 8h13v7a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8zM17 10h2a2 2 0 0 1 0 4h-2M8 3v2M12 3v2',
+    cubiertos:'M7 3v7M4 3v4a3 3 0 0 0 6 0V3M7 14v7M17 3c-2 0-3 2.5-3 5v3h3v10M17 3v8',
+    capsula:  'M8 4h8a4 4 0 0 1 0 8h-8a4 4 0 0 1 0-8zM12 4v8M6 16h12v4H6z',
+    llave:    'M14.5 6.5a4 4 0 0 0-5.6 5L3 17.5 6.5 21l6-5.9a4 4 0 0 0 5-5.6L14 13l-2.5-.5L11 10l3.5-3.5z',
+    chip:     'M6 6h12v12H6zM10 10h4v4h-4zM9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3',
+    brillo:   'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3zM19 16l.8 2.2 2.2.8-2.2.8L19 20l-.8-2.2L16 18l2.2-.8L19 16z',
+    pata:     'M12 13c-3 0-6 2.2-6 4.6a2 2 0 0 0 4 .6c.6-.4 1.3-.6 2-.6s1.4.2 2 .6a2 2 0 0 0 4-.6c0-2.4-3-4.6-6-4.6zM7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM16.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM4.5 14a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM19.5 14a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
+    puntos:   'M5 12h.01M12 12h.01M19 12h.01',
+  };
+  const d = RUTAS[id] || RUTAS.puntos;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+}
+
 
 // Detecta la zona horaria del sistema operativo (ej. "America/Mazatlan").
 // Si el navegador no la da, cae a un valor seguro.

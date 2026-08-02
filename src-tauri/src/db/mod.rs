@@ -38,6 +38,14 @@ pub mod sync_pull;
 pub mod sync_worker;
 pub mod tienda;
 pub mod lealtad;
+pub mod proveedores;
+pub mod visitas;
+pub mod misiones;
+pub mod imagenes;
+pub mod cotizaciones;
+pub mod finanzas;
+pub mod etiquetas;
+pub mod fotos_externas;
 
 use rusqlite::Connection;
 use std::sync::Mutex;

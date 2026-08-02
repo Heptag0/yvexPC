@@ -118,6 +118,7 @@ pub fn eliminar(con: &Connection, id: &str) -> Result<(), String> {
 }
 
 /// Carga un ticket específico por id (para retomarlo).
+#[allow(dead_code)] // reservada para cuando se pueda reabrir un ticket en espera por id
 pub fn cargar(con: &Connection, id: &str) -> Result<Option<TicketEspera>, String> {
     con.query_row(
         "SELECT id, numero, nombre, contenido, actualizado_en FROM tickets_espera WHERE id = ?1",

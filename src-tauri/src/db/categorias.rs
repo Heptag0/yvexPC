@@ -14,6 +14,9 @@ pub struct Categoria {
     pub nombre: String,
     pub color: Option<String>,
     pub orden: i64,
+    /// Id del icono de departamento (ver src/util/iconos-depto.js). None =
+    /// sin icono asignado, se sigue mostrando solo por color.
+    pub icono: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -21,6 +24,7 @@ pub struct NuevaCategoria {
     pub nombre: String,
     pub color: Option<String>,
     pub orden: Option<i64>,
+    pub icono: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,13 +33,14 @@ pub struct EditarCategoria {
     pub nombre: String,
     pub color: Option<String>,
     pub orden: Option<i64>,
+    pub icono: Option<String>,
 }
 
 /// Lista categorías no eliminadas, ordenadas por `orden` y luego nombre.
 pub fn listar(con: &Connection) -> Result<Vec<Categoria>, String> {
     let mut stmt = con
         .prepare(
-            "SELECT id, nombre, color, orden
+            "SELECT id, nombre, color, orden, icono
              FROM categorias
              WHERE eliminado = 0
              ORDER BY orden, nombre COLLATE NOCASE",
@@ -48,6 +53,7 @@ pub fn listar(con: &Connection) -> Result<Vec<Categoria>, String> {
                 nombre: row.get(1)?,
                 color: row.get(2)?,
                 orden: row.get(3)?,
+                icono: row.get(4)?,
             })
         })
         .map_err(|e| format!("error al consultar categorías: {e}"))?;
@@ -68,12 +74,15 @@ pub fn crear(con: &Connection, dispositivo_id: &str, datos: &NuevaCategoria) -> 
     let orden = datos.orden.unwrap_or(0);
 
     con.execute(
-        "INSERT INTO categorias (id, nombre, color, orden, creado_en, actualizado_en, eliminado, dispositivo_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?5, 0, ?6)",
-        rusqlite::params![id, nombre, datos.color, orden, ts, dispositivo_id],
+        "INSERT INTO categorias (id, nombre, color, orden, icono, creado_en, actualizado_en, eliminado, dispositivo_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, 0, ?7)",
+        rusqlite::params![id, nombre, datos.color, orden, datos.icono, ts, dispositivo_id],
     )
     .map_err(|e| format!("error al crear categoría: {e}"))?;
 
+    // ⚠️ "icono" NO va en el payload de sync a propósito: es LOCAL-ONLY por
+    // ahora (el servidor todavía no tiene esa columna). El resto de la
+    // categoría sigue sincronizando igual que siempre.
     let payload = serde_json::json!({
         "id": id, "nombre": nombre, "color": datos.color, "orden": orden,
         "creado_en": ts, "actualizado_en": ts, "eliminado": 0, "dispositivo_id": dispositivo_id,
@@ -81,7 +90,7 @@ pub fn crear(con: &Connection, dispositivo_id: &str, datos: &NuevaCategoria) -> 
     encolar_sync(con, "categorias", &id, "insert", &payload)
         .map_err(|e| format!("error al encolar categoría: {e}"))?;
 
-    Ok(Categoria { id, nombre: nombre.to_string(), color: datos.color.clone(), orden })
+    Ok(Categoria { id, nombre: nombre.to_string(), color: datos.color.clone(), orden, icono: datos.icono.clone() })
 }
 
 pub fn editar(con: &Connection, datos: &EditarCategoria) -> Result<Categoria, String> {
@@ -94,15 +103,16 @@ pub fn editar(con: &Connection, datos: &EditarCategoria) -> Result<Categoria, St
 
     let n = con
         .execute(
-            "UPDATE categorias SET nombre = ?2, color = ?3, orden = ?4, actualizado_en = ?5
+            "UPDATE categorias SET nombre = ?2, color = ?3, orden = ?4, icono = ?5, actualizado_en = ?6
              WHERE id = ?1 AND eliminado = 0",
-            rusqlite::params![datos.id, nombre, datos.color, orden, ts],
+            rusqlite::params![datos.id, nombre, datos.color, orden, datos.icono, ts],
         )
         .map_err(|e| format!("error al editar categoría: {e}"))?;
     if n == 0 {
         return Err("No se encontró la categoría.".into());
     }
 
+    // "icono" LOCAL-ONLY, igual que en crear() — no se manda al servidor.
     let payload = serde_json::json!({
         "id": datos.id, "nombre": nombre, "color": datos.color, "orden": orden,
         "actualizado_en": ts,
@@ -110,7 +120,7 @@ pub fn editar(con: &Connection, datos: &EditarCategoria) -> Result<Categoria, St
     encolar_sync(con, "categorias", &datos.id, "update", &payload)
         .map_err(|e| format!("error al encolar categoría: {e}"))?;
 
-    Ok(Categoria { id: datos.id.clone(), nombre: nombre.to_string(), color: datos.color.clone(), orden })
+    Ok(Categoria { id: datos.id.clone(), nombre: nombre.to_string(), color: datos.color.clone(), orden, icono: datos.icono.clone() })
 }
 
 /// Reasigna el campo `orden` de las categorías según la lista de ids recibida
