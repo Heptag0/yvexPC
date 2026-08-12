@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+~/
+*.key
+*.key.pub
+*.sig
+src-tauri/tauri.conf.json.respaldo
