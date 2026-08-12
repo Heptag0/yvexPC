@@ -2,6 +2,10 @@
 // Folio corto, hora relativa, teléfono MX y contraste WCAG (espejo del
 // cálculo del backend en tienda_utils.py).
 
+// Estático a propósito, no import() dinámico — el ofuscador de producción
+// rompe los import() dinámicos (ver el mismo arreglo en configuracion.js).
+import { invoke } from "@tauri-apps/api/core";
+
 /// Folio corto del pedido: primeros 8 caracteres del id, en mayúsculas.
 /// Es el mismo que el cliente ve en la tienda ("Folio web").
 export function folioCorto(id) {
@@ -41,7 +45,6 @@ export function urlWhatsApp(tel, mensaje) {
 /// Abre una URL externa con el plugin opener de Tauri (navegador del sistema).
 export async function abrirUrl(url) {
   if (!url) return;
-  const { invoke } = await import("@tauri-apps/api/core");
   await invoke("plugin:opener|open_url", { url });
 }
 

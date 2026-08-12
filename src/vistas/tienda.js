@@ -172,7 +172,7 @@ export function montarTienda(contenedor, sesion, volver) {
 
     cuerpo.innerHTML = `
       ${estadoSrv && estadoSrv.tiene_tienda ? `
-      <section class="td-seccion con-filo">
+      <section class="td-seccion td-seccion--estado con-luz">
         <div class="td-estado ${publicada ? "td-estado--ok" : ""}">
           <div>
             <div class="td-estado-titulo">${publicada ? "Tu tienda está al aire" : "Tu tienda está en pausa"}</div>
@@ -190,7 +190,14 @@ export function montarTienda(contenedor, sesion, volver) {
         ${publicada ? `<div class="td-enlace">${escapar(urlPublica)}</div>` : ""}
       </section>` : ""}
 
-      <section class="td-seccion con-filo">
+      <!-- Antes: 5 tarjetas idénticas apiladas con separación entre ellas —
+           se leía como una pila de cajas grises repetidas. Ahora es UN
+           contenedor con divisores internos (--filo) entre bloques: mismo
+           contenido, una sola superficie, más aire por dentro que entre
+           tarjetas. El estado (arriba) se queda aparte a propósito: es la
+           única cifra "en vivo" de esta pantalla, el resto es configuración. -->
+      <div class="td-config">
+      <section class="td-bloque">
         <h2 class="td-h2">Tu enlace</h2>
         <p class="td-ayuda">Así se verá la dirección de tu tienda: <strong>{tu-enlace}.yvexiq.com</strong>.
         Solo minúsculas, números y guiones.</p>
@@ -202,7 +209,7 @@ export function montarTienda(contenedor, sesion, volver) {
         <div class="td-msg" id="td-slug-msg"></div>
       </section>
 
-      <section class="td-seccion con-filo">
+      <section class="td-bloque">
         <h2 class="td-h2">Diseño</h2>
         <div class="td-label">Plantilla</div>
         <div class="td-plantillas">
@@ -239,7 +246,7 @@ export function montarTienda(contenedor, sesion, volver) {
         <div id="td-banner-preview"></div>
       </section>
 
-      <section class="td-seccion con-filo">
+      <section class="td-bloque">
         <h2 class="td-h2">Pedidos y entregas</h2>
         <label class="td-check"><input type="checkbox" id="td-pickup" ${boolVal("tienda_entrega_pickup", estadoSrv ? estadoSrv.entrega_pickup !== false : true) ? "checked" : ""}>
           Recoger en tienda</label>
@@ -262,7 +269,7 @@ export function montarTienda(contenedor, sesion, volver) {
           Mostrar el stock en la tienda</label>
       </section>
 
-      <section class="td-seccion con-filo">
+      <section class="td-bloque">
         <h2 class="td-h2">Datos del negocio</h2>
         <div class="td-fila">
           <select class="td-input" id="td-giro">
@@ -296,7 +303,7 @@ export function montarTienda(contenedor, sesion, volver) {
         </div>
       </section>
 
-      <section class="td-seccion con-filo">
+      <section class="td-bloque td-bloque--ultimo">
         <h2 class="td-h2">Productos <span class="td-ayuda" id="td-prod-conteo"></span></h2>
         <div class="td-fila">
           <button class="btn-sec btn-mini" id="td-todos">Todos</button>
@@ -311,6 +318,7 @@ export function montarTienda(contenedor, sesion, volver) {
             </label>`).join("")}
         </div>
       </section>
+      </div><!-- /.td-config -->
 
       <div class="td-publicar">
         <div class="td-msg" id="td-publicar-msg"></div>

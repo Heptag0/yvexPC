@@ -1,5 +1,6 @@
 //! Fotos de producto que NO vienen del disco del usuario:
 //!   · Buscar en Open Food Facts, por código de barras
+//!   · Buscar NUTRICIÓN en Open Food Facts, por nombre (para la despensa)
 //!   · Quitar el fondo, corriendo en TU servidor (nunca en el PC)
 //!
 //! Mismo patrón que el resto de la comunicación con el VPS (ver
@@ -98,6 +99,151 @@ pub fn descargar_a_local(app: &tauri::AppHandle, url: &str) -> Result<String, St
         .map_err(|e| format!("error al leer la imagen descargada: {e}"))?;
 
     super::imagenes::guardar_bytes(app, &bytes, ext)
+}
+
+// ============================================================================
+// Open Food Facts — nutrición por nombre (para la despensa de Recetas)
+// ============================================================================
+// Distinto endpoint del que usa `buscar_en_catalogo`: ese busca por código de
+// barras exacto (API v2, un solo resultado). Este busca por TEXTO LIBRE
+// ("leche santa clara") y puede traer varios candidatos — es el endpoint de
+// búsqueda de toda la vida de OFF (`cgi/search.pl`); su sucesor v2 está
+// pensado para filtrar por categorías/tags, no para texto libre, así que
+// aquí sí es la herramienta correcta pese al nombre "legacy".
+
+#[derive(Debug, Serialize)]
+pub struct CandidatoNutricion {
+    pub nombre: String,
+    pub marca: Option<String>,
+    pub calorias_kcal: f64,
+    pub azucares_g: f64,
+    pub grasas_saturadas_g: f64,
+    pub grasas_trans_g: f64,
+    pub sodio_mg: f64,
+    pub proteinas_g: f64,
+    pub carbohidratos_g: f64,
+    pub grasas_totales_g: f64,
+    pub fibra_g: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct OffBusquedaRespuesta {
+    #[serde(default)]
+    products: Vec<OffProductoBusqueda>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OffProductoBusqueda {
+    product_name: Option<String>,
+    brands: Option<String>,
+    nutriments: Option<OffNutrientes>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct OffNutrientes {
+    #[serde(rename = "energy-kcal_100g")]
+    energia_kcal_100g: Option<f64>,
+    sugars_100g: Option<f64>,
+    #[serde(rename = "saturated-fat_100g")]
+    grasas_saturadas_100g: Option<f64>,
+    #[serde(rename = "trans-fat_100g")]
+    grasas_trans_100g: Option<f64>,
+    /// ⚠️ OFF guarda el sodio en GRAMOS por 100 g, no en mg — se convierte
+    /// al mapear a CandidatoNutricion (nuestro esquema usa mg, como pide la
+    /// tabla nutrimental de una etiqueta NOM-051 real).
+    sodium_100g: Option<f64>,
+    proteins_100g: Option<f64>,
+    carbohydrates_100g: Option<f64>,
+    fat_100g: Option<f64>,
+    fiber_100g: Option<f64>,
+}
+
+/// Busca candidatos de nutrición por nombre de producto. Lista vacía es el
+/// caso normal (sin internet, sin resultados, nombre muy corto) — igual que
+/// `buscar_en_catalogo`, nunca es un error que deba interrumpir al usuario.
+/// Máximo 8 candidatos, para que quepan cómodos en un desplegable.
+/// Ejecuta la búsqueda contra OFF. `solo_mexico` filtra a productos
+/// etiquetados como vendidos en México (marca `tagtype_0=countries`, el
+/// mecanismo de filtro genérico de la búsqueda "clásica" de OFF) — así se
+/// prioriza Lala/Alpura/Santa Clara sobre marcas españolas como Hacendado,
+/// que dominan la base por tener muchos más contribuidores.
+fn ejecutar_busqueda_off(q: &str, solo_mexico: bool) -> Result<Vec<CandidatoNutricion>, String> {
+    let mut req = ureq::get("https://world.openfoodfacts.org/cgi/search.pl")
+        .query("search_terms", q)
+        .query("search_simple", "1")
+        .query("action", "process")
+        .query("json", "1")
+        .query("page_size", "8")
+        .query("fields", "product_name,brands,nutriments");
+
+    if solo_mexico {
+        req = req
+            .query("tagtype_0", "countries")
+            .query("tag_contains_0", "contains")
+            .query("tag_0", "mexico");
+    }
+
+    let resp = req
+        .set("User-Agent", "YvexPOS/1.0 (contacto: soporte@yvexiq.com)")
+        .timeout(std::time::Duration::from_secs(8))
+        .call();
+
+    let r = match resp {
+        Ok(r) => r,
+        Err(_) => return Ok(Vec::new()), // sin internet, timeout: lista vacía, no error
+    };
+    let datos: OffBusquedaRespuesta = match r.into_json() {
+        Ok(d) => d,
+        Err(_) => return Ok(Vec::new()),
+    };
+
+    let candidatos = datos
+        .products
+        .into_iter()
+        .filter_map(|p| {
+            let nombre = p.product_name?;
+            if nombre.trim().is_empty() {
+                return None;
+            }
+            let n = p.nutriments.unwrap_or_default();
+            Some(CandidatoNutricion {
+                nombre,
+                marca: p.brands,
+                calorias_kcal: n.energia_kcal_100g.unwrap_or(0.0),
+                azucares_g: n.sugars_100g.unwrap_or(0.0),
+                grasas_saturadas_g: n.grasas_saturadas_100g.unwrap_or(0.0),
+                grasas_trans_g: n.grasas_trans_100g.unwrap_or(0.0),
+                sodio_mg: n.sodium_100g.unwrap_or(0.0) * 1000.0,
+                proteinas_g: n.proteins_100g.unwrap_or(0.0),
+                carbohidratos_g: n.carbohydrates_100g.unwrap_or(0.0),
+                grasas_totales_g: n.fat_100g.unwrap_or(0.0),
+                fibra_g: n.fiber_100g.unwrap_or(0.0),
+            })
+        })
+        .take(8)
+        .collect();
+
+    Ok(candidatos)
+}
+
+/// Busca candidatos de nutrición por nombre de producto. Lista vacía es el
+/// caso normal (sin internet, sin resultados, nombre muy corto) — igual que
+/// `buscar_en_catalogo`, nunca es un error que deba interrumpir al usuario.
+///
+/// Primero intenta SOLO productos de México (Lala, Alpura, Santa Clara...);
+/// si eso no encuentra nada, cae de vuelta a la búsqueda global sin filtro
+/// de país — mejor un resultado español que ninguno.
+pub fn buscar_nutricion_por_nombre(nombre: &str) -> Result<Vec<CandidatoNutricion>, String> {
+    let q = nombre.trim();
+    if q.chars().count() < 3 {
+        return Ok(Vec::new()); // evita disparar búsquedas con 1-2 letras mientras se escribe
+    }
+
+    let de_mexico = ejecutar_busqueda_off(q, true)?;
+    if !de_mexico.is_empty() {
+        return Ok(de_mexico);
+    }
+    ejecutar_busqueda_off(q, false)
 }
 
 // ============================================================================

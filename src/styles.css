@@ -23,14 +23,48 @@
 /* ============================================================================
    Fuentes locales (offline-first: el POS no puede depender de internet)
    ----------------------------------------------------------------------------
-   Colocar los archivos en src/fonts/ :
-     InterVariable.woff2        → https://rsms.me/inter/ (Inter 4.x variable)
-     SpaceGrotesk-Variable.woff2 → https://fonts.google.com/specimen/Space+Grotesk
-       (descargar familia → carpeta contiene SpaceGrotesk[wght].ttf; convertir
-        a woff2 o usar el woff2 del repo github.com/floriankarsten/space-grotesk)
-   Si los archivos aún no existen, el fallback (Segoe UI / system) mantiene
-   el programa funcional — nada se rompe, solo se ve la fuente del sistema.
+   Todas viven en src/fonts/. Inter y Space Grotesk se conservan como
+   respaldo histórico (ya no son las activas, pero no estorban).
+   Si algún archivo faltara, el fallback del sistema mantiene el programa
+   funcional — nada se rompe, solo se ve la fuente nativa.
    ============================================================================ */
+
+/* ============================================================================
+   CAPA 0 — TIPOGRAFÍA
+   Fuentes empaquetadas dentro de la app: el POS funciona sin internet, así
+   que NUNCA se cargan desde un CDN. Si fallan, cae a la pila nativa y la
+   app sigue legible.
+
+   Archivo   → interfaz. Grotesca con buenas diacríticas para español.
+   Plex Mono → DINERO. Cifras tabulares que alinean en columna, como un
+               ticket impreso. Es lo que hace que un precio se lea distinto
+               de un texto cualquiera.
+   ============================================================================ */
+@font-face {
+  font-family: "Archivo";
+  src: url("./fonts/Archivo-VariableFont_wdth,wght.ttf") format("truetype-variations");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("./fonts/IBMPlexMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("./fonts/IBMPlexMono-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Plex Mono";
+  src: url("./fonts/IBMPlexMono-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-display: swap;
+}
+
 @font-face {
   font-family: "Inter";
   src: url("./fonts/InterVariable.woff2") format("woff2");
@@ -50,6 +84,19 @@
    CAPA 1 — CONSTANTES DE MARCA
    ============================================================================ */
 :root {
+  /* Intensidad del resplandor de acento en tarjetas.
+     Fondo oscuro: el acento necesita presencia para leerse.
+     Fondo claro: el mismo valor se vería como mancha de pintura.
+     Un token resuelve las 54 combinaciones (6 temas x 9 acentos). */
+  --op-luz: 0.55;
+  --op-halo: 0.7;
+}
+[data-tema="alba"], [data-tema="duna"], [data-tema="contraste"] {
+  --op-luz: 0.3;
+  --op-halo: 0.45;
+}
+
+:root {
   /* ===== Marca ===== */
   --marca-a: #8b5cf6;                 /* morado Yvex — ancla del ecosistema  */
   --marca-b: #2dd4bf;                 /* turquesa pulso                      */
@@ -58,10 +105,19 @@
      (pulso). Nunca como decoración de componentes. */
 
   /* ===== Tipografía ===== */
-  --fuente-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --fuente-display: "Space Grotesk", "Inter", system-ui, sans-serif;
-  /* display: wordmark, cifras grandes de dinero (totales, cambio, métricas) */
-  --fuente-num: "Space Grotesk", "Inter", ui-monospace, "Cascadia Mono", monospace;
+  --fuente-ui: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fuente-display: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* DINERO. Plex Mono con cifras tabulares: los precios alinean en columna
+     como en un ticket impreso, y una cantidad se lee distinto de un texto
+     cualquiera. Ya está aplicada en ~60 reglas de este archivo, así que
+     reapuntar esta sola línea cambia el dinero en TODA la app. */
+  --fuente-num: "Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+  /* Cifras tabulares por defecto donde se use la fuente de dinero. */
+  --num-features: "tnum" 1, "zero" 1;
+  /* Alias heredados: los usan Tienda y Lealtad con respaldo a las fuentes
+     viejas. Se apuntan a las nuevas para que nada quede fuera del sistema. */
+  --fuente-titulo: var(--fuente-display);
+  --fuente-cuerpo: var(--fuente-ui);
   --txt-display: 34px;
   --txt-titulo: 24px;
   --txt-seccion: 18px;
@@ -2860,21 +2916,27 @@ body.modo-fluido .alerta-neg--visible { animation: none; }
   align-items: stretch;
 }
 
-/* ---------- Sidebar (riel de iconos, se expande al hover) ---------- */
+/* ---------- Sidebar (ancho fijo: solo lo fijado, agrupado) ----------
+   Antes era un riel de 64px que se expandía al hover con los 16 módulos.
+   Eso obligaba a recordar iconos y hacía que "Venta" pesara lo mismo que
+   "Etiquetado NOM". Ahora el ancho es fijo, se lee el nombre siempre, y
+   solo aparece lo que el dueño fijó. El resto vive en el cajón.          */
 .sb {
-  width: 64px;
+  width: 218px;
   flex: 0 0 auto;
   background: var(--sidebar);
   border-right: 1px solid var(--borde);
   display: flex;
   flex-direction: column;
-  padding: 12px 10px;
+  padding: 10px 10px 8px;
   gap: 2px;
-  overflow: hidden;
-  transition: width var(--dur-media) var(--ease-out);
+  overflow-y: auto;
   z-index: 4;
+  transition: box-shadow var(--dur-media) var(--ease-out);
 }
-.sb:hover { width: 212px; }
+.sb--recibiendo {
+  box-shadow: inset 0 0 0 2px var(--acento);
+}
 
 .sb-logo {
   display: flex;
@@ -2898,7 +2960,7 @@ body.modo-fluido .alerta-neg--visible { animation: none; }
   background-clip: text;
   color: transparent;
 }
-.sb:hover .sb-marca { opacity: 1; }
+
 
 .sb-items { display: flex; flex-direction: column; gap: 2px; }
 
@@ -2937,12 +2999,36 @@ body.modo-fluido .alerta-neg--visible { animation: none; }
 .sb-ico svg { width: 21px; height: 21px; }
 .sb-item--activo .sb-ico { color: var(--acento); }
 .sb-texto {
-  opacity: 0;
-  transition: opacity var(--dur-media) var(--ease-out);
+  /* El sidebar ya no es un riel que se expande: el nombre se lee SIEMPRE.
+     Antes esto era opacity:0 y solo aparecía al hacer hover. */
+  opacity: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.sb:hover .sb-texto { opacity: 1; }
 
-.sb-fin { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+
+/* Pegado al fondo del ÁREA VISIBLE de .sb (no del contenido). Antes usaba
+   solo margin-top:auto, que empuja al fondo del contenido — si .sb-lista
+   crecía con muchos módulos fijados, .sb (overflow-y:auto) se volvía
+   scrolleable y .sb-fin (con el candado) quedaba fuera de vista, pidiendo
+   scroll para llegar a él. position:sticky lo resuelve sin tocar HTML/JS:
+   se mantiene pegado al fondo mientras se hace scroll arriba, y cuando no
+   hay overflow se comporta igual que antes (empujado al fondo por el
+   propio margin-top:auto). El fondo sólido + filo superior evitan que la
+   lista se vea "asomando" por debajo al hacer scroll. */
+.sb-fin {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--sidebar);
+  padding-top: 8px;
+  box-shadow: inset 0 1px 0 var(--filo);
+}
 .sb-user {
   display: flex;
   align-items: center;
@@ -2966,10 +3052,10 @@ body.modo-fluido .alerta-neg--visible { animation: none; }
   display: flex;
   flex-direction: column;
   line-height: 1.25;
-  opacity: 0;
-  transition: opacity var(--dur-media) var(--ease-out);
+  opacity: 1;
+  min-width: 0;
 }
-.sb:hover .sb-user-txt { opacity: 1; }
+
 .sb-user-txt b { font-size: 12.5px; color: var(--texto); }
 .sb-user-txt small { font-size: 10.5px; color: var(--texto-debil); text-transform: capitalize; }
 .sb-salir:hover { color: var(--peligro); background: var(--peligro-suave); }
@@ -3386,20 +3472,46 @@ body.modo-fluido .alerta-neg--visible { animation: none; }
   left: 0; right: 0;
   height: 2px;
 }
-.shell-pie-fila {
+/* Barra de estado: antes era una franja con dos palabras y mucho espacio
+   desperdiciado. Ahora carga información real y sus celdas son accionables
+   (el turno lleva a Corte, el sync a Configuración), como la barra de un
+   editor de código. */
+.pie-fila {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-4);
-  padding: 5px 14px;
+  gap: 0;
+  padding: 0 4px;
   font-size: var(--txt-mini);
+  height: 26px;
 }
-.shell-estado {
-  font-weight: 700;
-  color: var(--acento);
-  transition: color var(--dur-media) var(--ease-out);
+.pie-hueco { flex: 1; }
+.pie-celda {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--texto-tenue);
+  font-family: var(--fuente-ui);
+  font-size: var(--txt-mini);
+  border-radius: var(--radio-sm);
+  cursor: pointer;
 }
-.shell-pie-info { color: var(--texto-debil); }
+.pie-celda:hover { background: var(--superficie-1); color: var(--texto); }
+.pie-celda--quieta { cursor: default; }
+.pie-celda--quieta:hover { background: transparent; color: var(--texto-tenue); }
+.pie-celda b { font-weight: 600; color: var(--texto); }
+.pie-punto {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--acento); flex: 0 0 6px;
+}
+#shell-estado[data-modo="exito"] .pie-punto,
+#pie-sync[data-modo="ok"] .pie-punto { background: var(--exito); }
+#shell-estado[data-modo="alerta"] .pie-punto,
+#pie-sync[data-modo="pendiente"] .pie-punto { background: var(--alerta); }
+#pie-sync[data-modo="sin"] .pie-punto { background: var(--texto-debil); }
 
 /* "Total" gigante de la captura: la fila heredaba el tamaño de la cifra.
    La etiqueta baja a versalitas discretas; la cifra conserva el peso. */
@@ -6266,6 +6378,51 @@ body.modo-fluido .alerta-neg--visible { animation: none; }
   color: var(--texto-debil); line-height: 1.6;
 }
 
+/* ─── Mejorar (motor de sustituciones seguras) ─── */
+.etq-mejorar-volver { margin-bottom: 4px; }
+.etq-sug { padding: 14px 0; border-bottom: 1px solid var(--borde); }
+.etq-sug:last-of-type { border-bottom: none; }
+.etq-sug--no-viable { opacity: 0.85; }
+.etq-sug-sello {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.5px;
+  color: var(--texto-debil); text-transform: uppercase;
+}
+.etq-sug-accion { font-size: 14.5px; font-weight: 700; color: var(--texto); margin-top: 4px; line-height: 1.4; }
+.etq-sug-accion--apagada { color: var(--texto-tenue); font-weight: 600; }
+.etq-sug-barra-fondo {
+  height: 8px; border-radius: var(--radio-full); background: var(--peligro-suave);
+  margin-top: 10px; overflow: hidden;
+}
+.etq-sug-barra-objetivo { height: 8px; border-radius: var(--radio-full); background: var(--exito); }
+.etq-sug-nums {
+  display: flex; justify-content: space-between; margin-top: 5px;
+  font-size: 11.5px; color: var(--texto-tenue);
+}
+.etq-sug-meta { color: var(--exito); font-weight: 800; }
+.etq-sug-bonus { color: var(--exito); font-size: 12px; line-height: 1.5; margin-top: 9px; }
+.etq-sug-nota { color: var(--texto-tenue); font-size: 12px; line-height: 1.55; margin-top: 7px; }
+
+.etq-sust { margin-top: 12px; padding: 12px; border-radius: var(--radio); border: 1px solid var(--borde); }
+.etq-sust--segura { background: var(--exito-suave); border-color: var(--exito-borde); }
+.etq-sust--advertencia { background: var(--alerta-suave); border-color: var(--alerta-borde); }
+.etq-sust--no_recomendada { background: var(--peligro-suave); border-color: var(--peligro-borde); }
+.etq-sust-badge {
+  display: inline-block; padding: 3px 9px; border-radius: var(--radio-full);
+  color: #fff; font-size: 9.5px; font-weight: 800; letter-spacing: 0.4px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+.etq-sust-badge--segura { background: var(--exito); }
+.etq-sust-badge--advertencia { background: var(--alerta); }
+.etq-sust-badge--no_recomendada { background: var(--peligro); }
+.etq-sust-titulo { margin-top: 7px; font-weight: 700; font-size: 13.5px; color: var(--texto); }
+.etq-sust-txt { color: var(--texto-tenue); font-size: 12px; line-height: 1.55; margin-top: 4px; }
+.etq-sust-como { color: var(--texto-debil); font-size: 11.5px; line-height: 1.5; margin-top: 7px; font-style: italic; }
+.etq-sust-falta {
+  margin-top: 10px; padding: 10px; border-radius: var(--radio);
+  background: var(--acento-suave); border: 1px solid var(--acento-borde);
+  font-size: 12px; color: var(--texto);
+}
+
 /* ============================================================================
    Fotos de producto — catálogo abierto. Pegar al final de styles.css.
    ============================================================================ */
@@ -6284,3 +6441,1526 @@ body.modo-fluido .alerta-neg--visible { animation: none; }
 }
 .m-foto-catalogo-btn span { display: flex; flex-direction: column; gap: 2px; }
 .m-foto-catalogo-btn b { font-size: 13px; color: var(--texto); font-weight: 700; }
+
+/* ============================================================================
+   DINERO — cifras tabulares en todo el programa
+   ----------------------------------------------------------------------------
+   La fuente de dinero se usa en ~34 reglas, pero solo la mitad declaraba
+   font-variant-numeric. Sin eso, un "1" ocupa menos que un "8" y las
+   columnas de precios bailan al actualizarse (se ve barato y cuesta leer).
+   Esta clase lo resuelve en un solo lugar: aplícala a cualquier elemento
+   que muestre una cantidad. Las reglas que ya lo declaran siguen igual.
+   ============================================================================ */
+.num,
+.dinero {
+  font-family: var(--fuente-num);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--num-features);
+  letter-spacing: -0.01em;
+}
+
+/* ============================================================================
+   ARMAZÓN v3 — barra de título propia, sidebar agrupado, cajón de módulos
+   ----------------------------------------------------------------------------
+   Requiere decorations:false en tauri.conf.json. La barra de título es
+   nuestra: ahí vive el nombre DEL NEGOCIO (grande) y YvexPOS queda de
+   segunda — es su negocio, nosotros somos la herramienta.
+   ============================================================================ */
+.tb {
+  flex: 0 0 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 4px 0 14px;
+  background: var(--sidebar);
+  border-bottom: 1px solid var(--borde);
+  user-select: none;
+}
+.tb-marca { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.tb-negocio {
+  font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--texto); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 260px;
+}
+.tb-sep { width: 1px; height: 15px; background: var(--borde-fuerte); flex: 0 0 1px; }
+.tb-prod { font-size: 10.5px; color: var(--texto-debil); letter-spacing: 0.03em; }
+.tb-drag { flex: 1; height: 100%; }
+.tb-ctrl { display: flex; gap: 2px; }
+.tb-btn {
+  width: 42px; height: 30px;
+  display: grid; place-items: center;
+  border: 0; background: transparent; color: var(--texto-tenue);
+  border-radius: var(--radio-sm); cursor: pointer;
+}
+.tb-btn:hover { background: var(--superficie-2); color: var(--texto); }
+.tb-btn--cerrar:hover { background: #c4342b; color: #fff; }
+
+/* ---------- Grupos del sidebar ---------- */
+.sb-lista { display: flex; flex-direction: column; }
+.sb-grupo { display: flex; flex-direction: column; gap: 2px; }
+.sb-grupo + .sb-grupo { margin-top: 12px; }
+.sb-grupo-tit {
+  font-size: 9.5px; letter-spacing: 0.09em; font-weight: 700;
+  color: var(--texto-debil); padding: 8px 10px 5px;
+}
+.sb-tecla {
+  margin-left: auto; font-size: 10px; color: var(--texto-debil);
+  letter-spacing: 0.02em;
+}
+.sb-item--arrastrando { opacity: 0.4; }
+.sb-item[draggable="true"] { cursor: pointer; }
+
+.sb-cajon-btn {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 10px; margin-bottom: 6px;
+  background: transparent;
+  border: 1px dashed var(--borde-fuerte);
+  border-radius: var(--radio-md);
+  color: var(--texto-tenue);
+  font-family: var(--fuente-ui); font-size: var(--txt-etiqueta);
+  cursor: pointer; text-align: left; width: 100%;
+}
+.sb-cajon-btn:hover { border-color: var(--acento); color: var(--acento); }
+.sb-cajon-btn .sb-ico svg { width: 19px; height: 19px; }
+
+/* ---------- Cajón de módulos ---------- */
+.cajon-velo {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--velo);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  transition: opacity var(--dur-media) var(--ease-out);
+}
+.cajon-velo--abierto { opacity: 1; }
+/* Durante un arrastre el velo deja pasar el puntero: si no, el cajón tapa el
+   sidebar y soltar ahí es imposible (era justo lo que pasaba). El panel del
+   cajón sí sigue recibiendo eventos, para poder devolver un módulo. */
+/* Y el sidebar sube por encima del velo para poder recibir lo que se suelta. */
+.arrastrando .sb { z-index: 70; }
+/* Durante el arrastre el cajón ya se cerró (ver sidebar.js), así que aquí
+   solo hay que marcar el destino: el sidebar se ilumina con un halo del
+   acento. Antes se dejaba el cajón encima a media opacidad y no se
+   distinguía nada. */
+.arrastrando .sb {
+  box-shadow: inset 0 0 0 2px var(--acento-borde);
+}
+.cajon {
+  width: min(780px, 92vw);
+  max-height: 82vh; overflow-y: auto;
+  background: var(--superficie-1);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio-lg);
+  padding: 20px;
+  box-shadow: var(--sombra-3);
+  transform: translateY(8px);
+  transition: transform var(--dur-media) var(--ease-out);
+}
+.cajon-velo--abierto .cajon { transform: translateY(0); }
+.cajon {
+  transition: transform var(--dur-media) var(--ease-out),
+              opacity var(--dur-media) var(--ease-out);
+}
+.cajon-velo {
+  transition: opacity var(--dur-media) var(--ease-out),
+              backdrop-filter var(--dur-media) var(--ease-out);
+}
+.cajon-top { display: flex; align-items: baseline; gap: 12px; }
+.cajon-top h3 { margin: 0; font-size: var(--txt-seccion); font-family: var(--fuente-display); }
+.cajon-top p { margin: 0; font-size: var(--txt-mini); color: var(--texto-debil); }
+.cajon-x {
+  margin-left: auto; border: 0; background: transparent;
+  color: var(--texto-debil); font-size: 17px; cursor: pointer;
+  line-height: 1; padding: 4px 6px; border-radius: var(--radio-sm);
+}
+.cajon-x:hover { background: var(--superficie-2); color: var(--texto); }
+.cajon-grupo {
+  font-size: 9.5px; letter-spacing: 0.09em; font-weight: 700;
+  color: var(--texto-debil); margin: 18px 0 9px;
+}
+.cajon-rejilla {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 9px;
+}
+/* Tarjeta de módulo.
+   El borde de 1px envejecía la tarjeta y el icono gris la dejaba muerta.
+   Ahora: superficie sin borde, icono EN COLOR DE ACENTO (lo que conecta la
+   tarjeta con el tema que eligió el dueño), y al pasar el mouse la
+   superficie se tiñe de ese mismo acento. El color deja de ser decoración
+   y pasa a ser el hilo que une todo.
+   Usa --acento y --acento-suave, que apariencia.js ya calcula por acento y
+   por tema con contraste real — no hace falta inventar variables nuevas. */
+.mod {
+  position: relative;
+  overflow: hidden; /* el filo superior respeta el radio de la esquina */
+  background: var(--superficie-2);
+  border: none;
+  border-radius: var(--radio-lg);
+  padding: 18px 20px 16px;
+  cursor: pointer;
+  display: flex; flex-direction: column; gap: 14px;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              background 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* En temas claros la superficie sola casi no se despega del fondo: un filo
+   interno sutil le devuelve el volumen sin recurrir a un borde duro. */
+.mod {
+  box-shadow: inset 0 0 0 1px var(--filo);
+  /* Volumen: la superficie no es un plano uniforme, recibe algo de luz por
+     arriba. Se nota sobre todo en los temas oscuros, donde una tarjeta
+     completamente plana se ve muerta. */
+  background-image: linear-gradient(180deg, var(--filo) 0%, transparent 48%);
+}
+.mod:hover {
+  background: var(--acento-suave);
+  transform: translateY(-3px);
+  box-shadow: var(--sombra-2);
+}
+.mod:active { transform: translateY(-1px); }
+
+/* Icono neutro por defecto y en ACENTO solo si la tarjeta está fijada.
+   Se probó con todos los iconos en acento: se lee bien (apariencia.js
+   calcula contraste WCAG por tema), pero con el resplandor y el badge
+   también en acento la tarjeta queda monótona. Reservar el color para las
+   fijadas crea jerarquía: unas encendidas, el resto en calma. */
+.mod-ico {
+  display: block;
+  color: var(--texto);
+  opacity: 0.82;
+  transition: opacity 0.2s ease, transform 0.2s ease, color 0.2s ease;
+}
+.mod-ico svg { width: 26px; height: 26px; stroke-width: 1.5; }
+.mod:hover .mod-ico { opacity: 1; transform: scale(1.05); }
+.mod--fijado .mod-ico { color: var(--acento); opacity: 0.95; }
+.mod--fijado:hover .mod-ico { opacity: 1; }
+
+.mod-n {
+  font-size: var(--txt-cuerpo);
+  font-weight: 600;
+  color: var(--texto);
+  letter-spacing: -0.01em;
+}
+
+/* Fijado: la tarjeta se ilumina DESDE ARRIBA.
+   Iteraciones descartadas: barra vertical a la izquierda (aire de
+   "notificación sin leer"), línea a lo largo del canto (se veía despegada) y
+   un hilo sólido de 2px (parecía cinta pegada).
+   La clave es que NO exista un canto duro: el resplandor se desplaza hacia
+   arriba fuera del área visible y se difumina con blur, así que el recorte
+   de la tarjeta (overflow:hidden) se come el borde nítido y solo queda la
+   luz entrando. Es la diferencia entre "luz" y "cinta". */
+.mod--fijado::before {
+  content: "";
+  position: absolute;
+  top: -10px; left: 0; right: 0;
+  height: 26px;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--acento) 0%, transparent 100%);
+  filter: blur(7px);
+  opacity: var(--op-luz);
+  transition: opacity 0.25s ease, height 0.25s cubic-bezier(0.4,0,0.2,1);
+}
+/* Segunda capa, más ancha y tenue: el halo que hace que la luz parezca
+   volumétrica en vez de una franja. */
+.mod--fijado::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 70%;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--acento-suave) 0%, transparent 100%);
+  opacity: var(--op-halo);
+  transition: opacity 0.25s ease;
+}
+.mod--fijado:hover::before { opacity: calc(var(--op-luz) + 0.25); height: 34px; }
+.mod--fijado:hover::after { opacity: 1; }
+
+/* Etiquetas. "Siempre" era texto suelto flotando en la esquina; ahora es una
+   cápsula bajo el nombre, que es donde el ojo ya está. */
+.mod-tag {
+  align-self: flex-start;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em;
+  border: 0; border-radius: 5px; padding: 3px 8px;
+  cursor: pointer; font-family: var(--fuente-ui);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+/* Badges neutros: si el icono, el resplandor Y el badge fueran del acento,
+   la tarjeta sería una sola nota de color. "Fijar" se distingue por PESO
+   (negrita), no por color — y así funciona igual con los nueve acentos. */
+.mod-tag--fijar {
+  background: var(--superficie-3);
+  color: var(--texto);
+  font-weight: 700;
+}
+.mod-tag--fijar:hover { background: var(--acento-suave); color: var(--acento); }
+.mod-tag--quitar { background: var(--superficie-3); color: var(--texto-tenue); }
+.mod-tag--quitar:hover { background: var(--peligro-suave); color: var(--peligro); }
+.mod-tag--fijo {
+  background: var(--superficie-3);
+  color: var(--texto-debil);
+  cursor: default;
+}
+.cajon-pista {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--borde);
+  font-size: var(--txt-mini); color: var(--texto-debil);
+}
+.cajon-pista svg { width: 14px; height: 14px; }
+
+/* Estados de arrastre (ver nota en sidebar.js sobre la clase .arrastrando) */
+
+/* Botón de pantalla completa activo (ver sidebar.js) */
+.tb-btn--activo { color: var(--acento); }
+
+/* Nombre + etiqueta juntos al pie de la tarjeta (ver mod-tag). */
+.mod-pie { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
+
+/* ============================================================================
+   ICONOS — grosor de trazo unificado
+   ----------------------------------------------------------------------------
+   Los SVG de iconos.js traían grosores distintos entre sí (unos 1.5, otros 2),
+   y eso hace que un menú se vea desordenado aunque los iconos sean del mismo
+   estilo. Se normaliza aquí en vez de cambiar de librería: los iconos ya
+   están usados en las 30 vistas y sustituirlos sería mucho riesgo por poca
+   ganancia. Solo aplica a los iconos de navegación y del cajón.
+   ============================================================================ */
+.sb-ico svg [stroke]:not([stroke="none"]),
+.mod-ico svg [stroke]:not([stroke="none"]) {
+  stroke-width: 1.6;
+}
+
+/* ---------------------------------------------------------------------------
+   "con-luz" — la firma del sistema, ahora reutilizable
+   ---------------------------------------------------------------------------
+   Es el mismo tratamiento que se diseñó para las tarjetas del cajón: la luz
+   del acento entra por el canto superior y se desvanece hacia abajo. El canto
+   duro queda FUERA del recorte (top negativo + blur), que es lo que hace que
+   se lea como luz y no como cinta pegada.
+   Se aplica solo a superficies que llevan la cifra protagonista de su
+   pantalla. Si se pone en todo, deja de significar algo.
+   --------------------------------------------------------------------------- */
+.con-luz {
+  position: relative;
+  overflow: hidden;
+}
+.con-luz::before {
+  content: "";
+  position: absolute;
+  top: -10px; left: 0; right: 0;
+  height: 26px;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--acento) 0%, transparent 100%);
+  filter: blur(7px);
+  opacity: var(--op-luz);
+}
+.con-luz::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 60%;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--acento-suave) 0%, transparent 100%);
+  opacity: var(--op-halo);
+}
+/* El contenido debe quedar por encima de las dos capas de luz. */
+.con-luz > * { position: relative; z-index: 1; }
+ 
+/* ---------------------------------------------------------------------------
+   Modal compartido (util/modal.js)
+   Entra y sale con animación; antes aparecía de golpe.
+   --------------------------------------------------------------------------- */
+.modal-overlay {
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.modal-overlay--abierto { opacity: 1; }
+.modal-overlay .modal {
+  transform: translateY(10px) scale(0.99);
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.modal-overlay--abierto .modal { transform: translateY(0) scale(1); }
+/* Sin scroll de fondo mientras hay un modal: evita el "salto" al abrirlo. */
+body.con-modal { overflow: hidden; }
+ 
+/* ---------------------------------------------------------------------------
+   Abrir caja — la primera pantalla del turno
+   --------------------------------------------------------------------------- */
+.caja-ico {
+  width: 48px; height: 48px;
+  margin: 0 auto 4px;
+  display: grid; place-items: center;
+  border-radius: var(--radio-lg);
+  background: var(--superficie-2);
+  color: var(--acento);
+}
+.caja-ico svg { width: 26px; height: 26px; }
+.caja-saludo { color: var(--texto-tenue); }
+ 
+/* El monto es el protagonista: se teclea directo, sin buscar dónde hacer clic. */
+.caja-monto--hero {
+  display: flex; align-items: baseline; justify-content: center;
+  gap: 6px;
+  margin: 18px 0 4px;
+}
+.caja-monto--hero .caja-signo {
+  font-family: var(--fuente-num);
+  font-size: 26px;
+  color: var(--texto-debil);
+}
+.caja-monto--hero input {
+  width: 100%;
+  max-width: 260px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--borde-fuerte);
+  color: var(--texto);
+  font-family: var(--fuente-num);
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-align: center;
+  padding: 4px 0 8px;
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+.caja-monto--hero input:focus { border-bottom-color: var(--acento); }
+.caja-monto--hero input::placeholder { color: var(--texto-debil); opacity: 0.5; }
+ 
+/* Montos de un toque: teclear "500.00" doscientas veces al año es fricción
+   que no aporta nada. */
+.caja-sugeridos {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 7px;
+  margin: 14px 0 4px;
+}
+.caja-sug {
+  padding: 7px 14px;
+  border-radius: var(--radio-full, 999px);
+  background: var(--superficie-2);
+  border: 1px solid var(--borde);
+  color: var(--texto-tenue);
+  font-family: var(--fuente-num);
+  font-size: var(--txt-etiqueta);
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+.caja-sug:hover { border-color: var(--borde-fuerte); color: var(--texto); }
+.caja-sug--activo {
+  background: var(--acento-suave);
+  border-color: var(--acento);
+  color: var(--acento);
+  font-weight: 600;
+}
+ 
+/* ---------------------------------------------------------------------------
+   Corte — el check del resumen de cierre
+   El estilo en línea que había (`style="background:var(--alerta)"`) pasa a
+   clase: los colores no viven en el JS.
+   --------------------------------------------------------------------------- */
+.exito-check--dif { background: var(--alerta); }
+ 
+/* ---------------------------------------------------------------------------
+   Clientes — franja de contexto como fichas
+   Antes las tres cifras iban en una línea de texto corrido, donde "por cobrar"
+   (el dato que de verdad importa) pesaba lo mismo que el conteo total.
+   --------------------------------------------------------------------------- */
+.cli-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: var(--sp-4, 16px);
+}
+.cli-ficha {
+  background: var(--superficie-1);
+  border-radius: var(--radio-lg);
+  padding: 14px 16px;
+  box-shadow: inset 0 0 0 1px var(--filo);
+  background-image: linear-gradient(180deg, var(--filo) 0%, transparent 48%);
+}
+.cli-ficha-lbl {
+  font-size: 9.5px;
+  letter-spacing: 0.09em;
+  font-weight: 700;
+  color: var(--texto-debil);
+}
+.cli-ficha-val {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--texto);
+  margin-top: 6px;
+  letter-spacing: -0.02em;
+}
+/* Solo la ficha de dinero recibe la luz, y solo si hay algo que cobrar. */
+.cli-ficha--dinero .cli-ficha-val { color: var(--texto); }
+ 
+/* ============================================================================
+   FOCO — el recuadro doble
+   ----------------------------------------------------------------------------
+   BUG SISTÉMICO: cuando un input vive dentro de un contenedor con estilo
+   propio, el contenedor marca el foco con :focus-within Y el input marca el
+   suyo con la regla global :focus-visible. Resultado: DOS recuadros, uno
+   dentro del otro. Se veía como error de renderizado y pasaba en casi todas
+   las pantallas (Abrir caja, Venta, Inventario…).
+ 
+   La regla: si el contenedor ya comunica el foco, el input NO dibuja el suyo.
+   El foco sigue siendo visible — que es lo que importa para accesibilidad y
+   para quien navega con teclado — pero una sola vez.
+ 
+   Para cualquier campo NUEVO que se envuelva en su propia caja, basta con
+   agregar aquí su selector (o usar .campo-envoltura).
+   ============================================================================ */
+.campo-envoltura input:focus,
+.campo-envoltura input:focus-visible,
+.caja-monto input:focus,
+.caja-monto input:focus-visible,
+.abrir-monto input:focus,
+.abrir-monto input:focus-visible,
+.venta-buscar-wrap input:focus,
+.venta-buscar-wrap input:focus-visible,
+.inv-buscar-wrap input:focus,
+.inv-buscar-wrap input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+ 
+/* El contenedor genérico para campos envueltos: marca el foco una sola vez. */
+.campo-envoltura:focus-within {
+  border-color: var(--acento);
+  box-shadow: var(--glow-acento);
+}
+ 
+/* `--morado` es una variable heredada que ya no existe en ningún tema, así
+   que este contenedor se quedaba sin color de foco. Pasa al acento vigente. */
+.caja-monto:focus-within {
+  outline: none;
+  border-color: var(--acento);
+  box-shadow: var(--glow-acento);
+}
+ 
+/* En el campo grande de Abrir caja el foco vive en la línea inferior: no
+   necesita ni recuadro ni resplandor alrededor. */
+.caja-monto--hero:focus-within {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+ 
+/* ============================================================================
+   PRIMITIVOS DEL SISTEMA — botones, inputs, modal, tabla
+   ----------------------------------------------------------------------------
+   Este bloque no es de una pantalla: son los componentes base que usan las
+   30 vistas. Encontrado en la auditoría: .btn-mini, .btn-sec, el modal, los
+   inputs y el envoltorio de tabla compartían el mismo border:1px solid
+   var(--borde-fuerte) — repetido decenas de veces por pantalla. Arreglarlo
+   aquí, una vez, sube el nivel de TODA la app de golpe.
+ 
+   Además, bug real encontrado: .btn-primario usaba background:var(--morado)
+   fijo en vez de var(--acento) — todos los botones primarios de la app
+   ignoraban el acento que el dueño elige en Apariencia. "Cobrar" siempre
+   salía morado sin importar la personalización.
+   ============================================================================ */
+ 
+/* --- Botones: fuera los bordes duros, dentro sombra + tono --- */
+.btn-primario, .btn-sec, .btn-peligro, .btn-mini {
+  border: none;
+}
+.btn-primario {
+  background: var(--acento); /* antes: var(--morado) fijo — bug de personalización */
+  color: var(--acento-texto);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+.btn-primario:hover {
+  filter: brightness(1.07);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -6px var(--acento);
+}
+.btn-primario:active { transform: translateY(0); }
+ 
+.btn-sec {
+  background: var(--superficie-2);
+  color: var(--texto);
+  box-shadow: inset 0 0 0 1px var(--filo);
+}
+.btn-sec:hover { background: var(--superficie-3); }
+ 
+.btn-mini {
+  background: var(--superficie-2);
+  box-shadow: inset 0 0 0 1px var(--filo);
+}
+.btn-mini:hover {
+  background: var(--superficie-3);
+  box-shadow: inset 0 0 0 1px var(--acento-borde);
+}
+.btn-mini--peligro { background: transparent; box-shadow: none; }
+.btn-mini--peligro:hover { background: var(--peligro-suave); box-shadow: inset 0 0 0 1px var(--peligro); }
+.btn-mini--ok { box-shadow: inset 0 0 0 1px var(--exito); }
+ 
+/* --- Modal: la sombra ya comunicaba profundidad; el borde sobraba --- */
+.modal {
+  border: none;
+  box-shadow: var(--sombra-3), inset 0 0 0 1px var(--filo);
+  padding: 32px 34px; /* más aire que antes (28px/30px) */
+}
+ 
+/* --- Inputs: se quita la dureza, no la definición ---
+   El contraste de fondo (--bg contra la --superficie-1 del modal que lo
+   envuelve) ya dice "esto es un campo"; el borde solo necesita ser un
+   acabado, no una jaula. */
+.m-grid input, .m-grid select, .modal > label input {
+  border: 1px solid var(--borde);
+}
+.m-grid input:focus, .m-grid select:focus, .modal > label input:focus {
+  border-color: var(--acento);
+}
+ 
+/* --- Tabla: el envoltorio ya tenía sombra; el borde era redundante --- */
+.inv-tabla-wrap {
+  border: none;
+  box-shadow: var(--sombra-1), inset 0 0 0 1px var(--filo);
+}
+.inv-tabla tbody td { padding: 15px 16px; } /* más aire por fila */
+ 
+/* ============================================================================
+   Configuración — hub de categorías
+   Mismo lenguaje que las tarjetas del cajón "Todo lo demás": icono neutro,
+   sin borde duro, acento reservado para el hover. Esta declaración va
+   DESPUÉS de la original en el archivo, así que gana por orden de cascada
+   sin necesidad de borrar la regla vieja.
+   ============================================================================ */
+.cfg-hub-seccion { margin-bottom: 32px; }
+.cfg-hub-titulo {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--texto-debil); margin: 0 0 14px;
+  border-bottom: none; padding-bottom: 0;
+}
+.cfg-hub-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px;
+}
+.cfg-hub-card {
+  position: relative;
+  overflow: hidden;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 18px 20px 16px;
+  background: var(--superficie-2);
+  background-image: linear-gradient(180deg, var(--filo) 0%, transparent 48%);
+  box-shadow: inset 0 0 0 1px var(--filo);
+  border: none;
+  border-radius: var(--radio-lg);
+  cursor: pointer;
+  text-align: left; color: var(--texto); font-family: var(--fuente-ui);
+  transition: transform 0.2s cubic-bezier(0.4,0,0.2,1),
+              background 0.2s cubic-bezier(0.4,0,0.2,1),
+              box-shadow 0.2s cubic-bezier(0.4,0,0.2,1);
+}
+.cfg-hub-card:hover:not(:disabled) {
+  background: var(--acento-suave);
+  transform: translateY(-3px);
+  box-shadow: var(--sombra-2);
+}
+.cfg-hub-ico {
+  display: block;
+  color: var(--acento);
+  opacity: 0.82;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  font-size: initial; /* pisa el font-size:26px viejo, pensado para el emoji */
+}
+.cfg-hub-ico svg { width: 24px; height: 24px; }
+.cfg-hub-card:hover .cfg-hub-ico { opacity: 1; transform: scale(1.05); }
+.cfg-hub-nombre { font-size: 14.5px; font-weight: 600; letter-spacing: -0.005em; }
+.cfg-hub-desc { font-size: 12px; color: var(--texto-tenue); line-height: 1.45; }
+ 
+/* ============================================================================
+   Sidebar — candado bloqueado/desbloqueado
+   ----------------------------------------------------------------------------
+   Bloqueado (por defecto): el sidebar de siempre, fijo, siempre visible.
+   Desbloqueado: se reduce a un tirador de 10px; al pasar el mouse se expande
+   FLOTANDO sobre el contenido (position:fixed + transform), sin empujarlo.
+   Si empujara Venta 218px cada vez que el mouse pasa cerca del borde, sería
+   insufrible para quien cobra con precisión — por eso NO es un cambio de
+   ancho en el layout, es una capa que se desliza encima.
+   El truco: transform mueve también el área de hit-test, así que solo los
+   10px visibles del tirador son hoverables/clicables. No hace falta JS para
+   el expandir/contraer — lo resuelve :hover puro.
+   ============================================================================ */
+.sb--desbloqueado {
+  position: fixed;
+  top: 38px; /* debajo de la barra de título */
+  bottom: 26px; /* encima de la barra de estado */
+  left: 0;
+  z-index: 55;
+  transform: translateX(-208px); /* dh 218px - 10px visibles = tirador */
+  transition: transform 0.3s var(--ease-out);
+  box-shadow: none;
+}
+.sb--desbloqueado:hover,
+.sb--desbloqueado:focus-within {
+  transform: translateX(0);
+  box-shadow: 12px 0 32px -8px rgba(0, 0, 0, 0.35);
+}
+/* Arrastrando un módulo del cajón: el sidebar se fuerza visible aunque esté
+   en modo auto-ocultar, para poder soltar ahí (si no, es imposible ver el
+   destino del arrastre). Reusa la misma clase .arrastrando del cajón. */
+.arrastrando .sb--desbloqueado {
+  transform: translateX(0);
+  box-shadow: 12px 0 32px -8px rgba(0, 0, 0, 0.35);
+}
+/* Gutter: reserva los 10px del tirador en el layout normal, para que el
+   contenido no arranque debajo del sidebar fijo. */
+.shell-fila:has(.sb--desbloqueado)::before {
+  content: "";
+  flex: 0 0 10px;
+}
+ 
+.sb-candado {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  margin: 6px auto 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radio-sm);
+  color: var(--texto-debil);
+  cursor: pointer;
+  transition: color 0.16s ease, background 0.16s ease;
+}
+.sb-candado:hover { color: var(--texto); background: var(--superficie-2); }
+.sb-candado svg { width: 15px; height: 15px; }
+ 
+/* ============================================================================
+   REGLA 1 — Pestañas y filtros: planas, no pastillas rellenas
+   ----------------------------------------------------------------------------
+   .rep-periodo (Reportes) y .inv-seg (Productos: Todos/Stock bajo/Negativos)
+   compartían el mismo defecto: pastilla con borde duro y fondo sólido de
+   acento cuando está activa. Se cambia a pestaña plana con línea inferior de
+   2px en el acento — el patrón que de verdad se lee "app actual" en vez de
+   "botón de formulario de los 2000".
+   ============================================================================ */
+.rep-periodos, .inv-segmentos, .pw-filtros {
+  border-bottom: 1px solid var(--filo);
+  gap: 2px;
+}
+.rep-periodo, .inv-seg, .pw-filtro {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 10px 14px 11px;
+  margin-bottom: -1px; /* se posa sobre la línea del contenedor */
+  color: var(--texto-tenue);
+  border-bottom: 2px solid transparent;
+  box-shadow: none;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+.rep-periodo:hover, .inv-seg:hover, .pw-filtro:hover {
+  color: var(--texto);
+  border-color: var(--borde);
+}
+.rep-periodo--activo, .inv-seg--on, .pw-filtro--on {
+  background: transparent;
+  color: var(--acento);
+  border-bottom-color: var(--acento);
+  font-weight: 600;
+}
+ 
+/* ============================================================================
+   REGLA 4 — sin líneas punteadas en separadores de fila
+   ----------------------------------------------------------------------------
+   El diseño punteado quedaba en 4 sitios (carrito de Venta, actividad de
+   Inicio, líneas de Devolución, resumen del onboarding) — mismo defecto,
+   no exclusivo de una pantalla. Pasan a línea sólida y sutil con --borde
+   (el mismo token que ya separa filas en tablas e inventario, no uno nuevo).
+   Las zonas de "arrastra aquí" con borde punteado completo NO se tocan:
+   ahí el punteado sí comunica algo (zona de destino, no una fila de datos).
+   ============================================================================ */
+.cl,
+.ini-venta,
+.dev-linea,
+.onb-resumen-fila {
+  border-bottom-style: solid;
+}
+ 
+/* ============================================================================
+   REGLA 5 — la alerta de stock negativo se siente parte del diseño
+   ----------------------------------------------------------------------------
+   Antes: borde sólido rojo alrededor de toda la tarjeta — se leía como una
+   calcomanía de advertencia pegada encima, no como parte del sistema.
+   Ahora: mismo lenguaje "con-luz" que ya usan las cifras protagonistas
+   (efectivo esperado del corte, "por cobrar" de Clientes), pero en rojo — la
+   luz entra por arriba y se apaga hacia abajo, en vez de enjaular la tarjeta.
+   ============================================================================ */
+.alerta-neg {
+  border: none;
+  overflow: hidden;
+  box-shadow: var(--sombra-3), inset 0 0 0 1px var(--filo);
+}
+.alerta-neg::before {
+  content: "";
+  position: absolute;
+  top: -10px; left: 0; right: 0;
+  height: 26px;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--peligro) 0%, transparent 100%);
+  filter: blur(7px);
+  opacity: var(--op-luz);
+}
+.alerta-neg::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 60%;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--peligro-suave) 0%, transparent 100%);
+  opacity: var(--op-halo);
+}
+.alerta-neg:hover {
+  border: none;
+  background: var(--superficie-3);
+}
+.alerta-neg > * { position: relative; z-index: 1; }
+ 
+/* ============================================================================
+   REGLA 3 — Tienda: un contenedor, no 5 tarjetas apiladas
+   ----------------------------------------------------------------------------
+   .td-seccion (con-filo) se repetía 5 veces con separación entre cada una:
+   se leía como una pila de cajas grises idénticas. Ahora la configuración
+   vive en UN contenedor (.td-config) con divisores internos --filo entre
+   bloques (.td-bloque). El estado (publicada/en pausa) se queda APARTE con
+   su propio con-luz: es la única cifra "en vivo" de la pantalla, el resto
+   es formulario — mezclarlos habría enterrado el dato que de verdad importa
+   bajo "elige tu plantilla".
+   ============================================================================ */
+.td-seccion--estado {
+  border: none;
+  box-shadow: var(--sombra-1), inset 0 0 0 1px var(--filo);
+}
+ 
+.td-config {
+  background: var(--superficie-2);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px var(--filo);
+  padding: 0 20px;
+}
+.td-bloque {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--filo);
+}
+.td-bloque--ultimo { border-bottom: none; }
+ 
+/* ============================================================================
+   Ronda: Devoluciones (icono de reimprimir con SVG en vez de emoji)
+   ============================================================================ */
+.dev-ticket-reimprimir {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+.dev-ticket-reimprimir svg { width: 13px; height: 13px; }
+ 
+/* ============================================================================
+   PEGAR AL FINAL DE src/styles.css
+   Ronda: Cotizaciones, Proveedores, Ticket, Login
+   ============================================================================ */
+
+/* --- Cotizaciones: borde duro del total -> --filo (mismo criterio de siempre) --- */
+.cot-cm-total { border-top-color: var(--filo); }
+
+/* ============================================================================
+   Ticket — vista previa con aspecto de papel real
+   ----------------------------------------------------------------------------
+   .tk-modal ya trae su propio fondo/padding/radio; envolverlo dentro del
+   .modal genérico (que también trae fondo/padding/sombra) se veía como una
+   caja dentro de otra caja. .modal--sin-relleno despoja al genérico y deja
+   que .tk-modal sea la única superficie visible.
+   El "diente" es el detalle que faltaba para que de verdad se lea como un
+   recibo: el borde perforado de la guillotina de una impresora térmica, no
+   solo un rectángulo con esquinas redondas.
+   ============================================================================ */
+.modal--sin-relleno {
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.tk-modal {
+  box-shadow: var(--sombra-3);
+}
+.tk-diente {
+  height: 9px;
+  margin: 0 -16px;
+  background:
+    linear-gradient(135deg, #fdfdfa 50%, transparent 50%) 0 0 / 12px 12px repeat-x,
+    linear-gradient(45deg, #fdfdfa 50%, transparent 50%) 0 0 / 12px 12px repeat-x;
+}
+.tk-diente--arriba { margin-top: -18px; margin-bottom: 8px; transform: scaleY(-1); }
+.tk-diente--abajo { margin-top: 8px; margin-bottom: -18px; }
+
+/* ============================================================================
+   Inventario (hub de Existencias) — mismo lenguaje que el cajón y Config
+   ----------------------------------------------------------------------------
+   Mismo defecto que ya se corrigió en Configuración: borde dur, ícono
+   suelto de tamaño fijo. Se declara DESPUÉS del original en el archivo,
+   así que gana por cascada sin borrar la regla vieja.
+   ============================================================================ */
+.invex-card {
+  border: none;
+  background: var(--superficie-2);
+  background-image: linear-gradient(180deg, var(--filo) 0%, transparent 48%);
+  box-shadow: inset 0 0 0 1px var(--filo);
+  transition: transform 0.2s cubic-bezier(0.4,0,0.2,1),
+              background 0.2s cubic-bezier(0.4,0,0.2,1),
+              box-shadow 0.2s cubic-bezier(0.4,0,0.2,1);
+}
+.invex-card:hover {
+  background: var(--acento-suave);
+  transform: translateY(-3px);
+  box-shadow: var(--sombra-2);
+  border-color: transparent;
+}
+.invex-ico {
+  display: block;
+  color: var(--acento);
+  opacity: 0.82;
+  font-size: initial;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.invex-ico svg { width: 26px; height: 26px; }
+.invex-card:hover .invex-ico { opacity: 1; transform: scale(1.05); }
+
+/* --- Onboarding: iconos reales en vez de emoji --- */
+.onb-nube-icono {
+  font-size: initial;
+  color: var(--acento);
+}
+.onb-nube-icono svg { width: 30px; height: 30px; }
+
+/* --- Pestañas: "Ventas del día" (dentro de Devoluciones) tenía el mismo
+   defecto que ya se corrigió en Reportes/Productos/Pedidos web: pastilla
+   con borde completo. Se suma a la misma regla plana de siempre. --- */
+.dev-filtros { border-bottom: 1px solid var(--filo); gap: 2px; }
+.dev-filtro {
+  background: transparent; border: none; border-radius: 0;
+  padding: 10px 14px 11px; margin-bottom: -1px;
+  color: var(--texto-tenue); border-bottom: 2px solid transparent;
+  box-shadow: none; transition: color 0.16s ease, border-color 0.16s ease;
+}
+.dev-filtro:hover { color: var(--texto); border-color: var(--borde); }
+.dev-filtro--activo { background: transparent; color: var(--acento); border-bottom-color: var(--acento); font-weight: 600; }
+.dev-filtro .num { color: var(--texto-debil); font-weight: 700; }
+.dev-filtro--activo .num { color: var(--acento); }
+ 
+/* --- Selector "¿Cómo se vende?": fuera el borde de color en la opción
+   elegida. Se distingue solo por el fondo suave, como pediste. --- */
+.venta-modo-op { border-color: var(--borde); }
+.venta-modo-op:hover { border-color: var(--borde-fuerte); }
+.venta-modo-op--activo { border-color: var(--borde); background: var(--acento-suave); color: var(--texto); }
+ 
+/* --- Hover de filas: tinte de acento + leve elevación. Antes solo cambiaba
+   a un gris neutro (superficie-2); ahora dice "esto es del acento que
+   elegiste", consistente con el resto del sistema. --- */
+.inv-tabla tbody tr {
+  transition: background 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease;
+}
+.inv-tabla tbody tr:hover {
+  background: var(--acento-suave);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px -4px rgba(0,0,0,0.25);
+  position: relative;
+}
+/* Lealtad no usa <table>: mismo tratamiento en sus tarjetas de cliente. */
+.lea-item {
+  transition: background 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease;
+}
+.lea-item:hover {
+  background: var(--acento-suave);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px -4px rgba(0,0,0,0.25);
+}
+ 
+/* --- Badge de tendencia (↑64% vs periodo anterior): fuera el fondo sólido,
+   dentro el filo de acento a la izquierda — se lee como una nota al margen,
+   no como una etiqueta pegada. --- */
+.rep-tend {
+  background: rgba(255,255,255,0.05);
+  border: none;
+  border-left: 2px solid var(--exito);
+  border-radius: 4px;
+  padding-left: 8px;
+}
+[data-tema="alba"] .rep-tend, [data-tema="duna"] .rep-tend, [data-tema="contraste"] .rep-tend {
+  background: rgba(0,0,0,0.04);
+}
+.rep-tend--abajo { border-left-color: var(--texto-debil); background: rgba(255,255,255,0.05); }
+[data-tema="alba"] .rep-tend--abajo, [data-tema="duna"] .rep-tend--abajo, [data-tema="contraste"] .rep-tend--abajo {
+  background: rgba(0,0,0,0.04);
+}
+
+/* ============================================================================
+   PEGAR AL FINAL DE src/styles.css
+   Ronda 5: CORRIGE el CSS de la ronda 4 (que dejaba franja negra abajo)
+   ----------------------------------------------------------------------------
+   QUÉ PASÓ: en la ronda anterior puse `.shell { height: 100% }` dentro de
+   `#app { min-height: 100% }`. En CSS un porcentaje de altura solo resuelve
+   si el PADRE tiene altura definida — y `min-height` no lo es. Así que ese
+   100% caía a `auto`, el shell medía solo su contenido, y debajo quedaba
+   negro. De paso había quitado el `100vh` que sí servía.
+ 
+   SOLUCIÓN: el shell no cuelga de ninguna cadena de porcentajes. Con
+   position:fixed + inset:0 ocupa EXACTAMENTE el viewport real, sea cual sea,
+   sin importar qué midan sus ancestros ni si 100vh quedó desactualizado tras
+   entrar a pantalla completa. Es el mismo patrón que usan las apps de
+   escritorio con shell propio.
+   ============================================================================ */
+html, body {
+  height: 100%;
+  overflow: hidden; /* el scroll vive dentro de .shell-contenido, no en body */
+}
+ 
+.shell {
+  position: fixed;
+  inset: 0;
+  height: auto;      /* inset:0 ya define la altura; height sobra y estorba */
+  max-height: none;
+}
+ 
+/* #app vuelve a su min-height original: lo usan login y onboarding, que sí
+   son de alto natural y centrado. El shell ya no depende de él. */
+#app {
+  min-height: 100vh;
+}
+ 
+ 
+/* ============================================================================
+   PEGAR AL FINAL DE src/styles.css
+   Ronda 6: barra de estado — ahora que se ve SIEMPRE, que se vea cara.
+   ----------------------------------------------------------------------------
+   Criterio de diseño: las barras de estado que se sienten premium (VS Code,
+   Linear, Xcode) son TEXTO PLANO con aire y separadores finos. Se descartó
+   meter cada dato en su cápsula: cinco pastillas en una franja de 28px la
+   vuelven ruidosa, y los recuadros son justo el "chrome" que llevamos toda
+   la reforma quitando. Aquí lo caro es el aire, no las cajas.
+   ============================================================================ */
+
+.shell-pie {
+  position: relative;
+  /* La luz cae desde el canto superior y se apaga hacia abajo: el mismo
+     lenguaje de la firma "con-luz" que ya usan las cifras protagonistas.
+     Hace que la barra parezca iluminada por la línea de vida de arriba, en
+     vez de ser una franja pegada al fondo. */
+  background:
+    linear-gradient(180deg, var(--filo) 0%, transparent 10px),
+    var(--sidebar);
+}
+
+.pie-fila {
+  height: 28px;              /* un pelo más de aire que los 26 de antes */
+  padding: 0 6px;
+  font-size: 11.5px;
+}
+
+/* Separadores: hairline entre grupos, no bordes de cápsula. Marcan ritmo
+   sin encajonar nada. */
+.pie-celda + .pie-celda::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 7px; bottom: 7px;
+  width: 1px;
+  background: var(--filo);
+}
+.pie-celda { position: relative; }
+/* El primero de cada grupo no lleva separador a la izquierda. */
+.pie-hueco + .pie-celda::before { display: none; }
+
+/* Hover: el tinte de acento del sistema, no un gris cualquiera. */
+.pie-celda:hover { background: var(--acento-suave); color: var(--texto); }
+
+/* ---- El pulso: la señal de que el sistema está vivo ----
+   Un latido de 3s, lentísimo y casi imperceptible. No es decoración: en un
+   POS que se queda abierto diez horas, es la diferencia entre "está
+   corriendo" y "se congeló". Se detiene si el sistema no está operando
+   (alerta), porque entonces el dato importante es otro. */
+.pie-punto {
+  box-shadow: 0 0 0 0 currentColor;
+  animation: pie-latido 3s var(--ease-out) infinite;
+}
+#shell-estado .pie-punto { color: var(--acento); }
+#shell-estado[data-modo="exito"] .pie-punto { color: var(--exito); }
+#shell-estado[data-modo="alerta"] .pie-punto { color: var(--alerta); animation: none; }
+@keyframes pie-latido {
+  0%   { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  70%  { box-shadow: 0 0 0 5px transparent; opacity: 0.75; }
+  100% { box-shadow: 0 0 0 0 transparent; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pie-punto { animation: none; }
+}
+
+/* ---- Jerarquía por PESO, no por tamaño ----
+   Se descartó agrandar el reloj un 20%: es información ambiental, no el
+   protagonista — agrandarlo invertiría la jerarquía (ni la barra de Windows
+   lo hace). En su lugar: la hora en el color de texto normal y la fecha
+   apagada, que es como el ojo espera leerlo. */
+#pie-reloj { letter-spacing: 0.01em; color: var(--texto-tenue); }
+#pie-reloj b { color: var(--texto); font-weight: 600; }
+
+/* El estado operativo SÍ pesa: es lo único que puede exigir una reacción. */
+#shell-estado b { font-weight: 600; letter-spacing: 0.01em; }
+
+/* ---- El destello de venta cobrada ----
+   Al cobrar, toda la barra se tiñe un instante de verde y vuelve sola. La
+   línea de vida ya hacía su recorrido arriba; esto lo acompaña abajo, para
+   que la confirmación se sienta en toda la pantalla y no en un hilo de 2px.
+   Es la clase de detalle que hace que cobrar se sienta satisfactorio 200
+   veces al día. */
+.shell-pie::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--exito-suave) 0%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.9s var(--ease-out);
+}
+.shell-pie:has(#shell-estado[data-modo="exito"])::after {
+  opacity: 1;
+  transition: opacity 0.12s var(--ease-out);
+}
+/* ============================================================================
+   Recetas y Despensa — costeo de productos fabricados
+   ----------------------------------------------------------------------------
+   .rct-hero usa la firma .con-luz ya existente (la cifra protagonista de esta
+   pantalla es el costo por porción). El resto reutiliza .btn-primario,
+   .btn-sec, .btn-mini, .inv-volver, .m-grid, .m-sub, .m-error, .m-acciones,
+   .num y .campo tal como ya están definidos — solo lo que falta va aquí.
+   ============================================================================ */
+
+.rct { padding: var(--sp-5); max-width: 920px; margin: 0 auto; width: 100%; }
+
+.rct-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+.rct-head-campo { flex: 1; }
+.rct-titulo { font-size: var(--txt-titulo); font-weight: 600; margin: 0 0 4px; }
+.rct-sub { color: var(--texto-tenue); font-size: var(--txt-cuerpo); margin: 0; }
+.rct-head-acciones { display: flex; gap: var(--sp-3); align-items: center; margin-left: auto; }
+.rct-btn-ico { display: inline-flex; width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; }
+.rct-btn-ico svg { width: 100%; height: 100%; }
+
+.rct-input-titulo {
+  background: transparent;
+  border: none;
+  font-size: var(--txt-titulo);
+  font-weight: 600;
+  color: var(--texto);
+  width: 100%;
+  padding: 8px 0;
+  font-family: var(--fuente-ui);
+}
+.rct-input-titulo:focus { outline: none; }
+.rct-input-titulo::placeholder { color: var(--texto-debil); }
+
+/* ---------- Lista de recetas ---------- */
+.rct-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--sp-4);
+}
+.rct-card {
+  text-align: left;
+  background: var(--superficie-1);
+  border: 1px solid var(--borde);
+  border-top-color: var(--filo);
+  border-radius: var(--radio-lg);
+  box-shadow: var(--sombra-1);
+  padding: var(--sp-4);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color var(--dur-rapida) var(--ease-out), background var(--dur-rapida) var(--ease-out);
+}
+.rct-card:hover { border-color: var(--acento-borde); background: var(--superficie-2); }
+.rct-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.rct-card-nombre { font-weight: 500; font-size: var(--txt-cuerpo); }
+.rct-card-tag {
+  font-size: var(--txt-mini);
+  color: var(--exito);
+  background: var(--exito-suave);
+  border-radius: var(--radio-sm);
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+.rct-card-costo { font-size: var(--txt-titulo); font-weight: 600; color: var(--acento); }
+.rct-card-sub { color: var(--texto-tenue); font-size: var(--txt-mini); }
+
+.rct-vacio {
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+  color: var(--texto-tenue);
+}
+.rct-vacio p { margin: 0 0 6px; }
+.rct-vacio-sub { font-size: var(--txt-etiqueta); }
+
+/* ---------- Detalle / editor ---------- */
+.rct-layout { display: flex; flex-direction: column; gap: var(--sp-5); }
+
+.rct-hero {
+  background: var(--superficie-1);
+  border: 1px solid var(--borde);
+  border-top-color: var(--filo);
+  border-radius: var(--radio-lg);
+  box-shadow: var(--sombra-2);
+  padding: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+}
+.rct-hero-lbl { color: var(--texto-tenue); font-size: var(--txt-etiqueta); }
+.rct-hero-val { font-size: var(--txt-display); font-weight: 600; color: var(--acento); line-height: 1.1; }
+.rct-hero-pie { color: var(--texto-tenue); font-size: var(--txt-mini); }
+
+.rct-rendimiento {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.4fr;
+  gap: var(--sp-4);
+}
+.rct-rendimiento label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--txt-etiqueta);
+  color: var(--texto-tenue);
+}
+.rct-rendimiento input[type="text"] {
+  background: var(--bg);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio-sm);
+  padding: 9px 12px;
+  color: var(--texto);
+  font: 400 var(--txt-cuerpo)/1.2 var(--fuente-ui);
+}
+.rct-rendimiento input[type="text"]:focus { outline: none; border-color: var(--acento); box-shadow: var(--glow-acento); }
+.rct-margen { display: flex; align-items: center; gap: 10px; }
+.rct-margen input[type="range"] { flex: 1; accent-color: var(--acento); }
+.rct-margen-val { min-width: 44px; text-align: right; font-weight: 500; }
+
+.rct-precio-sugerido {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--superficie-1);
+  border-radius: var(--radio-md);
+  box-shadow: inset 0 0 0 1px var(--filo);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--txt-cuerpo);
+}
+.rct-precio-sugerido-val { font-size: var(--txt-seccion); font-weight: 600; }
+
+.rct-ingredientes-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-3); }
+.rct-ingredientes-head h2 { font-size: var(--txt-seccion); font-weight: 500; margin: 0; }
+
+.rct-lineas-vacio { color: var(--texto-tenue); font-size: var(--txt-etiqueta); padding: var(--sp-4) 0; }
+
+.rct-linea {
+  display: grid;
+  grid-template-columns: 1fr 140px 100px 32px;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px 0;
+  box-shadow: inset 0 -1px 0 var(--filo);
+  border-radius: var(--radio-sm);
+  transition: background var(--dur-rapida) var(--ease-out);
+}
+.rct-linea:hover { background: color-mix(in srgb, var(--acento) 5%, transparent); }
+.rct-linea:last-child { box-shadow: none; }
+.rct-linea-nombre { font-size: var(--txt-cuerpo); }
+.rct-linea-cant { display: flex; align-items: center; gap: 6px; }
+.rct-linea-cant input {
+  width: 72px;
+  background: var(--bg);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio-sm);
+  padding: 7px 8px;
+  color: var(--texto);
+  font: 400 var(--txt-etiqueta)/1.2 var(--fuente-ui);
+  text-align: right;
+}
+.rct-linea-cant input:focus { outline: none; border-color: var(--acento); box-shadow: var(--glow-acento); }
+.rct-linea-unidad { color: var(--texto-tenue); font-size: var(--txt-mini); }
+.rct-linea-costo { text-align: right; cursor: default; }
+.rct-linea-quitar {
+  background: none; border: none; color: var(--texto-debil); font-size: 18px;
+  cursor: pointer; width: 28px; height: 28px; border-radius: var(--radio-sm);
+}
+.rct-linea-quitar:hover { color: var(--peligro); background: var(--peligro-suave); }
+
+.rct-nutricion {
+  background: var(--superficie-1);
+  border-radius: var(--radio-lg);
+  box-shadow: inset 0 0 0 1px var(--filo);
+  padding: var(--sp-4);
+}
+.rct-nutricion h2 { font-size: var(--txt-seccion); font-weight: 500; margin: 0 0 6px; }
+.rct-nutricion-nota { color: var(--texto-tenue); font-size: var(--txt-mini); margin: 0 0 var(--sp-3); }
+.rct-nutricion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--sp-3);
+}
+.rct-nutricion-grid > div { display: flex; flex-direction: column; gap: 2px; }
+.rct-nutricion-grid span { color: var(--texto-tenue); font-size: var(--txt-mini); }
+.rct-nutricion-grid strong { font-size: var(--txt-cuerpo); font-weight: 500; }
+.rct-nutricion-tip { color: var(--texto-tenue); font-size: var(--txt-mini); margin: var(--sp-3) 0 0; }
+
+.rct-notas-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--texto-tenue);
+  font-size: var(--txt-etiqueta);
+}
+.rct-notas-campo textarea {
+  background: var(--bg);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio-sm);
+  padding: 10px 12px;
+  color: var(--texto);
+  font: 400 var(--txt-cuerpo)/1.4 var(--fuente-ui);
+  resize: vertical;
+}
+.rct-notas-campo textarea:focus { outline: none; border-color: var(--acento); box-shadow: var(--glow-acento); }
+
+.rct-acciones-finales { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); }
+.rct-error { color: var(--peligro); font-size: var(--txt-etiqueta); }
+.rct-ya-vinculado { color: var(--texto-tenue); font-size: var(--txt-etiqueta); margin-right: var(--sp-3); }
+
+/* ---------- Selector de ingrediente (modal) ---------- */
+.rct-selector-lista {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--sp-3);
+}
+.rct-selector-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radio-sm);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--texto);
+  font: 400 var(--txt-cuerpo)/1.2 var(--fuente-ui);
+}
+.rct-selector-item:hover { background: var(--superficie-2); }
+.rct-selector-costo { color: var(--texto-tenue); font-size: var(--txt-mini); }
+
+/* ---------- Despensa ---------- */
+.desp-tabla { display: flex; flex-direction: column; gap: 2px; }
+.desp-fila {
+  display: grid;
+  grid-template-columns: 1.4fr 1.4fr 1fr auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 12px var(--sp-3);
+  border-radius: var(--radio-sm);
+  transition: background var(--dur-rapida) var(--ease-out);
+}
+.desp-fila:hover { background: var(--superficie-2); }
+.desp-fila-nombre { font-weight: 500; }
+.desp-fila-paquete { color: var(--texto-tenue); font-size: var(--txt-etiqueta); }
+.desp-fila-costo { text-align: right; }
+.desp-fila-acciones { display: flex; gap: 6px; justify-content: flex-end; }
+
+.ing-nutricion-det { margin: var(--sp-3) 0; }
+.ing-nutricion-det summary {
+  cursor: pointer;
+  color: var(--texto-tenue);
+  font-size: var(--txt-etiqueta);
+  padding: 6px 0;
+}
+.ing-nutricion-det[open] summary { color: var(--texto); margin-bottom: 6px; }
+
+/* ---------- Autocompletado y búsqueda en Open Food Facts ---------- */
+.ing-nombre-campo { position: relative; }
+.ing-sugerencias {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--superficie-2);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio-md);
+  box-shadow: var(--sombra-2);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 5;
+}
+.ing-sug-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  box-shadow: inset 0 -1px 0 var(--filo);
+  padding: 9px 12px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--texto);
+  font: 400 var(--txt-etiqueta)/1.3 var(--fuente-ui);
+}
+.ing-sug-item:last-child { box-shadow: none; }
+.ing-sug-item:hover { background: var(--superficie-3); }
+.ing-sug-marca { color: var(--texto-tenue); font-size: var(--txt-mini); flex-shrink: 0; }
+
+.ing-buscar-off-fila { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.ing-buscar-off-fila .m-preview { margin: 0; }
+
+/* ============================================================================
+   Actualización automática (modal de util/actualizaciones.js)
+   ============================================================================ */
+.act-notas {
+  color: var(--texto-tenue);
+  font-size: var(--txt-etiqueta);
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow-y: auto;
+  margin: 0 0 var(--sp-3);
+}
+.act-progreso { display: flex; flex-direction: column; gap: 6px; margin: var(--sp-3) 0; }
+.act-progreso-barra {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--superficie-2);
+  overflow: hidden;
+}
+.act-progreso-relleno {
+  height: 100%;
+  width: 0%;
+  background: var(--acento);
+  transition: width var(--dur-media) var(--ease-out);
+}
+.act-progreso-txt { color: var(--texto-tenue); font-size: var(--txt-mini); }
+
+/* ============================================================================
+   Pestaña Actualizaciones (configuracion.js)
+   ============================================================================ */
+.cfg-btn-ico { display: inline-flex; width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; }
+.cfg-btn-ico svg { width: 100%; height: 100%; }
+.cfg-act-estado { color: var(--texto-tenue); font-size: var(--txt-etiqueta); margin-top: var(--sp-2); }
+.cfg-act-estado--mal { color: var(--peligro); }
+ 
+/* ============================================================================
+   Registro de movimientos (inventario_existencias.js :: pantallaBitacora)
+   ============================================================================ */
+.bit-filtros {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin: var(--sp-4) 0;
+}
+.bit-filtros label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--txt-etiqueta);
+  color: var(--texto-tenue);
+}
+.bit-filtros input[type="date"],
+.bit-filtros select {
+  background: var(--bg);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio-sm);
+  padding: 8px 10px;
+  color: var(--texto);
+  font: 400 var(--txt-cuerpo)/1.2 var(--fuente-ui);
+}
+.bit-filtros input[type="date"]:focus,
+.bit-filtros select:focus {
+  outline: none;
+  border-color: var(--acento);
+  box-shadow: var(--glow-acento);
+}
+
+.bit-lista { display: flex; flex-direction: column; gap: 2px; }
+.bit-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 10px 12px;
+  border-radius: var(--radio-sm);
+  box-shadow: inset 0 -1px 0 var(--filo);
+  transition: background var(--dur-rapida) var(--ease-out);
+}
+.bit-item:last-child { box-shadow: none; }
+.bit-item:hover { background: var(--superficie-2); }
+.bit-item-ico { display: flex; width: 20px; height: 20px; color: var(--texto-tenue); flex-shrink: 0; }
+.bit-item-ico svg { width: 100%; height: 100%; }
+.bit-item-cuerpo { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.bit-item-desc { font-size: var(--txt-cuerpo); }
+.bit-item-meta { font-size: var(--txt-mini); color: var(--texto-tenue); }
+.bit-item-monto { font-weight: 600; flex-shrink: 0; }
+
+/* ============================================================================
+   Etiquetado NOM-051 — aviso de notas automáticas y etiqueta "vinculada"
+   ============================================================================ */
+.etq-aviso-notas {
+  background: var(--advertencia-suave, rgba(217, 119, 6, 0.12));
+  color: var(--advertencia, #d97706);
+  border-radius: var(--radio-md);
+  padding: 10px 14px;
+  font-size: var(--txt-etiqueta);
+  line-height: 1.4;
+  margin: 0 var(--sp-4) var(--sp-3);
+}
+.etq-fila-tag {
+  font-size: var(--txt-mini);
+  color: var(--texto-tenue);
+  background: var(--superficie-2);
+  border-radius: var(--radio-sm);
+  padding: 2px 8px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* ============================================================================
+   Etiquetado NOM-051 — aviso de notas automáticas y etiqueta "vinculada"
+   ============================================================================ */
+.etq-aviso-notas {
+  background: var(--advertencia-suave, rgba(217, 119, 6, 0.12));
+  color: var(--advertencia, #d97706);
+  border-radius: var(--radio-md);
+  padding: 10px 14px;
+  font-size: var(--txt-etiqueta);
+  line-height: 1.4;
+  margin: 0 var(--sp-4) var(--sp-3);
+}
+.etq-fila-tag {
+  font-size: var(--txt-mini);
+  color: var(--texto-tenue);
+  background: var(--superficie-2);
+  border-radius: var(--radio-sm);
+  padding: 2px 8px;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.etq-elegir-prod { display: flex; align-items: center; gap: var(--sp-3); }
+.etq-elegir-prod-nota { color: var(--texto-tenue); font-size: var(--txt-mini); margin: 0; }

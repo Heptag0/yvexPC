@@ -78,6 +78,14 @@ struct Pagina {
     /// lealtad, IVA, datos fiscales). Nunca preferencias por-dispositivo.
     #[serde(default)]
     config: Vec<Value>,
+    /// Cotizaciones del negocio (de cualquier caja): carrito armado sin
+    /// cobrar. A diferencia de una venta, SÍ puede cambiar de estado desde
+    /// otro dispositivo (cancelarse, convertirse), así que no se excluyen
+    /// las del propio dispositivo.
+    #[serde(default)]
+    cotizaciones: Vec<Value>,
+    #[serde(default)]
+    cotizacion_lineas: Vec<Value>,
 }
 
 /// Resultado de una pasada de bajada (para logs y para la UI).
@@ -421,9 +429,9 @@ fn aplicar_pagina(con: &Connection, p: &Pagina, disp_local: &str) -> Result<usiz
             tx.execute(
                 "INSERT INTO venta_lineas
                     (id, venta_id, producto_id, descripcion, cantidad,
-                     precio_unitario_centavos, descuento_linea_centavos,
-                     total_linea_centavos, creado_en, actualizado_en)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)
+                     precio_unitario_centavos, costo_unitario_centavos,
+                     descuento_linea_centavos, total_linea_centavos, creado_en, actualizado_en)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10)
                  ON CONFLICT(id) DO NOTHING",
                 rusqlite::params![
                     txt(l, "id"),
@@ -432,6 +440,7 @@ fn aplicar_pagina(con: &Connection, p: &Pagina, disp_local: &str) -> Result<usiz
                     txt(l, "descripcion"),
                     real(l, "cantidad"),
                     entero(l, "precio_unitario_centavos"),
+                    entero(l, "costo_unitario_centavos"),
                     entero(l, "descuento_linea_centavos"),
                     entero(l, "total_linea_centavos"),
                     opt_txt(l, "creado_en").unwrap_or_else(ahora_iso),
@@ -570,6 +579,83 @@ fn aplicar_pagina(con: &Connection, p: &Pagina, disp_local: &str) -> Result<usiz
             )
             .map_err(|e| format!("compra {}: {e}", txt(c, "id")))?;
             aplicados += 1;
+        }
+
+        // --- Cotizaciones del negocio (de cualquier caja) ---
+        // DO UPDATE en todo el estado: a diferencia de una compra, SÍ cambia
+        // después de creada (se cancela, vence, o se convierte en venta
+        // desde otro dispositivo — venta_id pasa de NULL a un id real).
+        for cot in &p.cotizaciones {
+            tx.execute(
+                "INSERT INTO cotizaciones
+                    (id, folio, cliente_nombre, cliente_telefono, cliente_correo, notas,
+                     subtotal_centavos, descuento_centavos, total_centavos, valida_hasta,
+                     estado, venta_id, eliminado, creado_en, actualizado_en, dispositivo_id)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)
+                 ON CONFLICT(id) DO UPDATE SET
+                    cliente_nombre = excluded.cliente_nombre,
+                    cliente_telefono = excluded.cliente_telefono,
+                    cliente_correo = excluded.cliente_correo,
+                    notas = excluded.notas,
+                    subtotal_centavos = excluded.subtotal_centavos,
+                    descuento_centavos = excluded.descuento_centavos,
+                    total_centavos = excluded.total_centavos,
+                    valida_hasta = excluded.valida_hasta,
+                    estado = excluded.estado,
+                    venta_id = excluded.venta_id,
+                    eliminado = excluded.eliminado,
+                    actualizado_en = excluded.actualizado_en",
+                rusqlite::params![
+                    txt(cot, "id"),
+                    entero(cot, "folio"),
+                    opt_txt(cot, "cliente_nombre"),
+                    opt_txt(cot, "cliente_telefono"),
+                    opt_txt(cot, "cliente_correo"),
+                    opt_txt(cot, "notas"),
+                    entero(cot, "subtotal_centavos"),
+                    entero(cot, "descuento_centavos"),
+                    entero(cot, "total_centavos"),
+                    opt_txt(cot, "valida_hasta"),
+                    {
+                        let e = txt(cot, "estado");
+                        match e.as_str() {
+                            "convertida" | "vencida" | "cancelada" => e,
+                            _ => "abierta".to_string(),
+                        }
+                    },
+                    opt_txt(cot, "venta_id"),
+                    bool01(cot, "eliminado"),
+                    opt_txt(cot, "creado_en").unwrap_or_else(ahora_iso),
+                    opt_txt(cot, "actualizado_en").unwrap_or_else(ahora_iso),
+                    disp_local,
+                ],
+            )
+            .map_err(|e| format!("cotización {}: {e}", txt(cot, "id")))?;
+            aplicados += 1;
+        }
+
+        // --- Líneas de esas cotizaciones (no cambian una vez creadas) ---
+        for l in &p.cotizacion_lineas {
+            tx.execute(
+                "INSERT INTO cotizacion_lineas
+                    (id, cotizacion_id, producto_id, descripcion, cantidad,
+                     precio_unitario_centavos, descuento_linea_centavos,
+                     total_linea_centavos, creado_en)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
+                 ON CONFLICT(id) DO NOTHING",
+                rusqlite::params![
+                    txt(l, "id"),
+                    txt(l, "cotizacion_id"),
+                    opt_txt(l, "producto_id"),
+                    txt(l, "descripcion"),
+                    real(l, "cantidad"),
+                    entero(l, "precio_unitario_centavos"),
+                    entero(l, "descuento_linea_centavos"),
+                    entero(l, "total_linea_centavos"),
+                    opt_txt(l, "creado_en").unwrap_or_else(ahora_iso),
+                ],
+            )
+            .map_err(|e| format!("línea de cotización {}: {e}", txt(l, "id")))?;
         }
 
         // --- Movimientos de puntos de OTRAS cajas (bitácora; el saldo ya

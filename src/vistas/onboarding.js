@@ -12,6 +12,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { montarVinculacion, detenerPolling } from "../util/vinculacion_ui.js";
 import { TEMAS, TEMAS_INFO, ACENTOS, aplicarApariencia, hexAcento } from "../util/apariencia.js";
 import { GIROS, obtenerGiro, sugerenciasDepartamentos, crearDepartamentosElegidos } from "../util/giro.js";
+import { icono } from "../util/iconos.js";
 
 const ROLES = [
   { valor: "cajero", etiqueta: "Cajero" },
@@ -506,7 +507,7 @@ function vistaPaso(paso) {
         <p class="onb-desc">Tu punto de venta funciona completo sin internet. La cuenta en la nube es un extra opcional.</p>
         <div class="onb-nube-opciones">
           <button type="button" class="onb-nube-card" id="onb-elige-local">
-            <div class="onb-nube-icono">💻</div>
+            <div class="onb-nube-icono">${icono("computadora")}</div>
             <h2>Solo local</h2>
             <p class="onb-nube-sub">Todo en esta computadora</p>
             <ul class="onb-nube-lista">
@@ -519,7 +520,7 @@ function vistaPaso(paso) {
           </button>
           <button type="button" class="onb-nube-card onb-nube-card--destacada" id="onb-elige-nube">
             <div class="onb-nube-badge">Recomendado</div>
-            <div class="onb-nube-icono">☁️</div>
+            <div class="onb-nube-icono">${icono("nube")}</div>
             <h2>Local + nube</h2>
             <p class="onb-nube-sub">Todo lo local, y además…</p>
             <ul class="onb-nube-lista">

@@ -9,6 +9,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { montarVerificacionInline } from "./verificacion_ui.js";
+import { abrirModal, cerrarModal } from "./modal.js";
+import { icono } from "./iconos.js";
 
 let cerradoEstaSesion = false;
 
@@ -43,7 +45,7 @@ function mostrarBanner(ancla, email) {
   banner.className = "verif-banner";
   banner.id = "verif-banner";
   banner.innerHTML = `
-    <span class="verif-banner-icono">📧</span>
+    <span class="verif-banner-icono">${icono("correo")}</span>
     <span class="verif-banner-texto">
       Verifica tu correo <strong>${escapar(email)}</strong> para asegurar tu cuenta.
     </span>
@@ -63,25 +65,19 @@ function mostrarBanner(ancla, email) {
 }
 
 // Modal ligero para verificar sin salir de la pantalla actual.
+// Usa el modal compartido (util/modal.js): apila correctamente si ya hay
+// otro modal abierto encima de esta pantalla, cierra con Escape o clic
+// afuera, y devuelve el foco a donde estaba al terminar.
 function abrirModalVerificacion(email) {
-  const overlay = document.createElement("div");
-  overlay.className = "verif-modal-overlay";
-  overlay.innerHTML = `<div class="verif-modal" id="verif-modal-caja"></div>`;
-  document.body.appendChild(overlay);
+  const caja = abrirModal("", { clase: "modal--chico" });
 
-  const caja = overlay.querySelector("#verif-modal-caja");
   montarVerificacionInline(caja, email, {
     alVerificar: () => {
-      overlay.remove();
+      cerrarModal(caja);
       const b = document.querySelector("#verif-banner");
       if (b) b.remove();
     },
-    alCerrar: () => overlay.remove(),
-  });
-
-  // Cerrar al hacer clic fuera de la caja.
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
+    alCerrar: () => cerrarModal(caja),
   });
 }
 

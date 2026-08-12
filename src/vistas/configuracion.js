@@ -3,11 +3,30 @@
 // (clave-valor) salvo Cajeros, que usa la tabla usuarios_pos.
 
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
+import { isEnabled as autostartActivo, enable as autostartActivar, disable as autostartDesactivar } from "@tauri-apps/plugin-autostart";
 import { escapar } from "../util/formato.js";
 import { montarVinculacion, detenerPolling } from "../util/vinculacion_ui.js";
 import { montarVerificacionInline } from "../util/verificacion_ui.js";
 import { TEMAS, ACENTOS, aplicarApariencia, hexAcento, valorApariencia, TEMAS_INFO } from "../util/apariencia.js";
 import { PACKS, PACKS_INFO, packDeConfig } from "../util/iconos-depto.js";
+import { abrirModal, cerrarModal } from "../util/modal.js";
+import { confirmar } from "../util/confirmar.js";
+import { icono } from "../util/iconos.js";
+import { revisarActualizacionManual } from "../util/actualizaciones.js";
+// Importación ESTÁTICA a propósito, no dinámica (`await import(...)`).
+// El ofuscador de producción (vite-plugin-javascript-obfuscator, con
+// stringArray activo) reescribe los strings literales del código —
+// incluido el nombre del módulo dentro de un import() dinámico — ANTES
+// de que Vite/Rollup termine de analizarlo. Vite deja de reconocerlo
+// como una importación empaquetable, y el texto llega crudo hasta el
+// navegador ("Failed to resolve module specifier"). Solo pasa en el
+// build ofuscado de producción, nunca en `npm run tauri dev`. Una
+// importación estática se resuelve ANTES de esa etapa, así que el
+// problema desaparece de raíz.
+import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
+import { list_thermal_printers } from "tauri-plugin-thermal-printer";
+import { writeTextFile, readTextFile } from "@tauri-apps/plugin-fs";
 
 const OPCIONES_IVA = [
   { valor: 0, label: "Sin IVA", desc: "No se aplica impuesto" },
@@ -16,42 +35,48 @@ const OPCIONES_IVA = [
   { valor: 8, label: "8%", desc: "México frontera" },
 ];
 
+// Los ids de "ico" son claves reales de util/iconos.js (antes eran emojis:
+// cambiaban de estilo según el sistema operativo y eran la señal más clara
+// de "plantilla genérica" en toda la app). Donde ya existía un icono que
+// encajaba (tienda, caja, clientes, código de barras) se reutiliza en vez
+// de dibujar uno nuevo — menos glifos distintos, más consistencia.
 const SECCIONES = [
   {
     titulo: "Negocio",
     opciones: [
-      { id: "negocio", icono: "🏪", nombre: "Datos del negocio", desc: "Nombre, dirección, teléfono" },
-      { id: "impuestos", icono: "％", nombre: "Impuestos", desc: "IVA aplicable a las ventas" },
-      { id: "fiscal", icono: "📄", nombre: "Datos fiscales", desc: "RFC, régimen, código postal" },
-      { id: "moneda", icono: "💲", nombre: "Moneda", desc: "Símbolo y formato" },
+      { id: "negocio", ico: "tienda", nombre: "Datos del negocio", desc: "Nombre, dirección, teléfono" },
+      { id: "impuestos", ico: "impuestos", nombre: "Impuestos", desc: "IVA aplicable a las ventas" },
+      { id: "fiscal", ico: "fiscal", nombre: "Datos fiscales", desc: "RFC, régimen, código postal" },
+      { id: "moneda", ico: "moneda", nombre: "Moneda", desc: "Símbolo y formato" },
     ],
   },
   {
     titulo: "Dispositivos",
     opciones: [
-      { id: "impresora", icono: "🖨️", nombre: "Impresora de tickets", desc: "Dispositivo, fuente, columnas" },
-      { id: "ticket", icono: "🧾", nombre: "Formato del ticket", desc: "Encabezado, pie, datos" },
-      { id: "lector", icono: "📷", nombre: "Lector de códigos", desc: "Escáner de barras" },
-      { id: "cajon", icono: "💵", nombre: "Cajón de dinero", desc: "Apertura automática" },
-      { id: "bascula", icono: "⚖️", nombre: "Báscula", desc: "Productos a granel" },
+      { id: "impresora", ico: "impresora", nombre: "Impresora de tickets", desc: "Dispositivo, fuente, columnas" },
+      { id: "ticket", ico: "credito", nombre: "Formato del ticket", desc: "Encabezado, pie, datos" },
+      { id: "lector", ico: "lector", nombre: "Lector de códigos", desc: "Escáner de barras" },
+      { id: "cajon", ico: "cajon", nombre: "Cajón de dinero", desc: "Apertura automática" },
+      { id: "bascula", ico: "bascula", nombre: "Báscula", desc: "Productos a granel" },
     ],
   },
   {
     titulo: "Personalización",
     opciones: [
-      { id: "tema", icono: "🎨", nombre: "Apariencia", desc: "Tema, color y estilo" },
-      { id: "zona", icono: "🕐", nombre: "Zona horaria", desc: "Para cortes y reportes del día" },
-      { id: "formas_pago", icono: "💳", nombre: "Formas de pago", desc: "Métodos aceptados" },
+      { id: "tema", ico: "tema", nombre: "Apariencia", desc: "Tema, color y estilo" },
+      { id: "zona", ico: "zona", nombre: "Zona horaria", desc: "Para cortes y reportes del día" },
+      { id: "formas_pago", ico: "formas_pago", nombre: "Formas de pago", desc: "Métodos aceptados" },
     ],
   },
   {
     titulo: "Sistema",
     opciones: [
-      { id: "usuarios", icono: "👤", nombre: "Cajeros y usuarios", desc: "Altas, edición y permisos" },
-      { id: "nube", icono: "☁️", nombre: "Conexión con la nube", desc: "Vincula esta caja con tu celular" },
-      { id: "importar", icono: "📥", nombre: "Importar datos a YvexPOS", desc: "Desde otro POS o desde Excel" },
-      { id: "exportar", icono: "📤", nombre: "Exportar datos", desc: "Descarga productos, inventario o ventas" },
-      { id: "respaldo", icono: "💾", nombre: "Respaldo", desc: "Copia de seguridad de datos" },
+      { id: "usuarios", ico: "clientes", nombre: "Cajeros y usuarios", desc: "Altas, edición y permisos" },
+      { id: "nube", ico: "nube", nombre: "Conexión con la nube", desc: "Vincula esta caja con tu celular" },
+      { id: "importar", ico: "importar", nombre: "Importar datos a YvexPOS", desc: "Desde otro POS o desde Excel" },
+      { id: "exportar", ico: "exportar", nombre: "Exportar datos", desc: "Descarga productos, inventario o ventas" },
+      { id: "respaldo", ico: "respaldo", nombre: "Respaldo", desc: "Copia de seguridad de datos" },
+      { id: "actualizaciones", ico: "actualizar", nombre: "Actualizaciones", desc: "Buscar versión nueva e inicio con Windows" },
     ],
   },
 ];
@@ -124,7 +149,7 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
   function opcionHTML(op) {
     return `
       <button class="cfg-hub-card" data-abrir="${op.id}">
-        <span class="cfg-hub-ico">${op.icono}</span>
+        <span class="cfg-hub-ico">${icono(op.ico)}</span>
         <span class="cfg-hub-nombre">${op.nombre}</span>
         <span class="cfg-hub-desc">${op.desc}</span>
       </button>`;
@@ -136,7 +161,7 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
       impresora: subImpresora, ticket: subTicket, lector: subLector, cajon: subCajon, bascula: subBascula,
       tema: subTema, zona: subZona, formas_pago: subFormasPago, usuarios: subUsuarios, respaldo: subRespaldo,
       importar: subImportarHub, importar_pos: subImportar, importar_excel: subImportarExcel, exportar: subExportar,
-      nube: subNube,
+      nube: subNube, actualizaciones: subActualizaciones,
     }[id];
     if (fn) fn(); else renderHub();
   }
@@ -152,6 +177,84 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
     montarVinculacion(cont, { compacto: false });
     // Si la cuenta está vinculada pero sin verificar, mostrar el aviso arriba.
     mostrarEstadoVerificacion();
+  }
+
+  function subActualizaciones() {
+    wrap.innerHTML = `${cabeceraSub("Actualizaciones", false)}
+      <section class="cfg-seccion">
+        <p class="cfg-seccion-sub">Versión instalada: <strong id="act-version">…</strong></p>
+        <button type="button" class="btn-primario" id="act-revisar">
+          <span class="cfg-btn-ico">${icono("actualizar")}</span> Buscar actualizaciones
+        </button>
+        <p class="cfg-act-estado" id="act-estado"></p>
+      </section>
+      <section class="cfg-seccion">
+        <label class="cfg-toggle">
+          <input type="checkbox" id="act-autostart" disabled />
+          <span>Iniciar YvexPOS automáticamente al encender la PC</span>
+        </label>
+        <p class="m-error" id="act-autostart-error"></p>
+      </section>`;
+    conectarVolver();
+
+    // Versión instalada (la del binario que realmente está corriendo, no
+    // un número de config que podría desincronizarse).
+    getVersion()
+      .then((v) => {
+        const el = wrap.querySelector("#act-version");
+        if (el) el.textContent = v;
+      })
+      .catch(() => {});
+
+    // Revisión manual: a diferencia del aviso automático de fondo, aquí SÍ
+    // se informa cuando ya está al día o cuando algo falla — el dueño pulsó
+    // el botón esperando una respuesta.
+    const btnRevisar = wrap.querySelector("#act-revisar");
+    const estado = wrap.querySelector("#act-estado");
+    btnRevisar.addEventListener("click", async () => {
+      btnRevisar.disabled = true;
+      estado.className = "cfg-act-estado";
+      estado.textContent = "Buscando…";
+      const r = await revisarActualizacionManual();
+      btnRevisar.disabled = false;
+      if (r.estado === "al_dia") {
+        estado.textContent = "Ya tienes la última versión.";
+      } else if (r.estado === "disponible") {
+        estado.textContent = `Versión ${escapar(r.version)} disponible — revisa la ventana que se abrió.`;
+      } else {
+        estado.className = "cfg-act-estado cfg-act-estado--mal";
+        estado.textContent = "No se pudo revisar: " + escapar(r.mensaje || "");
+      }
+    });
+
+    // Iniciar con Windows: el estado real vive en el sistema operativo, no
+    // en `config` — se lee en vivo cada vez que se abre esta pantalla.
+    const chkAutostart = wrap.querySelector("#act-autostart");
+    const errAutostart = wrap.querySelector("#act-autostart-error");
+    autostartActivo()
+      .then((activo) => {
+        chkAutostart.checked = activo;
+        chkAutostart.disabled = false;
+      })
+      .catch((e) => {
+        errAutostart.textContent = "No se pudo leer el estado de inicio automático: " + String(e);
+      });
+
+    chkAutostart.addEventListener("change", async () => {
+      chkAutostart.disabled = true;
+      errAutostart.textContent = "";
+      try {
+        if (chkAutostart.checked) {
+          await autostartActivar();
+        } else {
+          await autostartDesactivar();
+        }
+      } catch (e) {
+        errAutostart.textContent = String(e);
+        chkAutostart.checked = !chkAutostart.checked; // revertir el switch si falló
+      }
+      chkAutostart.disabled = false;
+    });
   }
 
   async function mostrarEstadoVerificacion() {
@@ -415,10 +518,9 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
       const hint = wrap.querySelector("#f-hint");
       hint.textContent = "Buscando impresoras…";
       try {
-        const mod = await import("tauri-plugin-thermal-printer");
         let lista = [];
-        if (mod.list_thermal_printers) {
-          lista = await mod.list_thermal_printers();
+        if (list_thermal_printers) {
+          lista = await list_thermal_printers();
         }
         if (Array.isArray(lista) && lista.length > 0) {
           const nombres = lista.map((p) => p.name || p).join(", ");
@@ -808,9 +910,8 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
       err.textContent = "";
       ok.hidden = true;
       try {
-        const dialog = await import("@tauri-apps/plugin-dialog");
         const fecha = new Date().toISOString().slice(0, 10);
-        const ruta = await dialog.save({
+        const ruta = await dialogSave({
           defaultPath: `respaldo_yvexpos_${fecha}.sqlite`,
           filters: [{ name: "Respaldo YvexPOS", extensions: ["sqlite"] }],
         });
@@ -828,8 +929,7 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
       const err = wrap.querySelector("#sub-error");
       err.textContent = "";
       try {
-        const dialog = await import("@tauri-apps/plugin-dialog");
-        const ruta = await dialog.open({
+        const ruta = await dialogOpen({
           multiple: false,
           filters: [{ name: "Respaldo YvexPOS", extensions: ["sqlite"] }],
         });
@@ -961,10 +1061,10 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
 
   function modalUsuario(usuario) {
     const esEdicion = !!usuario;
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.innerHTML = `
-      <div class="modal" role="dialog" aria-modal="true">
+    // Antes era un modal armado a mano, con overlay.remove() propio y sin
+    // pasar por la pila compartida — la quinta implementación distinta de
+    // "modal" en el programa. Ahora usa util/modal.js como todo lo demás.
+    const modal = abrirModal(`
         <h2>${esEdicion ? "Editar usuario" : "Nuevo usuario"}</h2>
         <div class="cfg-grid">
           <label class="cfg-col2">Nombre
@@ -989,17 +1089,21 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
             <button class="btn-primario" id="um-guardar">${esEdicion ? "Guardar" : "Crear"}</button>
           </div>
         </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    const q = (s) => overlay.querySelector(s);
-    const cerrar = () => overlay.remove();
+      `);
+    const q = (s) => modal.querySelector(s);
+    const cerrar = () => cerrarModal(modal);
     q("#um-cancelar").addEventListener("click", cerrar);
-    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) cerrar(); });
     setTimeout(() => q("#um-nombre").focus(), 50);
 
     if (esEdicion) {
       q("#um-eliminar").addEventListener("click", async () => {
-        if (!confirm(`¿Eliminar a ${usuario.nombre}?`)) return;
+        // BUG REAL: usaba confirm() nativo, que WebView2 bloquea en Tauri.
+        // Eliminar un cajero no llegaba ni a preguntar — probablemente nunca
+        // funcionó desde que se escribió.
+        const ok = await confirmar(`¿Eliminar a ${escapar(usuario.nombre)}? No podrá volver a iniciar sesión.`, {
+          titulo: "Eliminar usuario", ok: "Eliminar", peligro: true,
+        });
+        if (!ok) return;
         try {
           await invoke("usuario_eliminar", { id: usuario.id, rol: sesion.rol });
           cerrar();
@@ -1091,8 +1195,7 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
       err.textContent = "";
       try {
         // Diálogo nativo de Tauri para elegir el .fdb.
-        const dialog = await import("@tauri-apps/plugin-dialog");
-        const ruta = await dialog.open({
+        const ruta = await dialogOpen({
           multiple: false,
           filters: [{ name: "Base de datos de POS", extensions: ["fdb", "FDB"] }],
         });
@@ -1226,9 +1329,8 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
       err.textContent = "";
       ok.textContent = "";
       try {
-        const dialog = await import("@tauri-apps/plugin-dialog");
         const fecha = new Date().toISOString().slice(0, 10);
-        const ruta = await dialog.save({
+        const ruta = await dialogSave({
           defaultPath: `respaldo_yvexpos_${fecha}.sqlite`,
           filters: [{ name: "Base de datos YvexPOS", extensions: ["sqlite"] }],
         });
@@ -1248,15 +1350,13 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
       try {
         const csv = await invoke("exportar_csv", { tipo, rol: sesion.rol });
         // Guardar con el diálogo nativo.
-        const dialog = await import("@tauri-apps/plugin-dialog");
         const fecha = new Date().toISOString().slice(0, 10);
-        const ruta = await dialog.save({
+        const ruta = await dialogSave({
           defaultPath: `${tipo}_${fecha}.csv`,
           filters: [{ name: "CSV", extensions: ["csv"] }],
         });
         if (!ruta) return;
-        const fs = await import("@tauri-apps/plugin-fs");
-        await fs.writeTextFile(ruta, csv);
+        await writeTextFile(ruta, csv);
         ok.textContent = `✓ Exportado correctamente a ${ruta}`;
       } catch (e) {
         err.textContent = "Error al exportar: " + e;
@@ -1299,15 +1399,13 @@ export function montarConfiguracion(contenedor, sesion, alSalir, abrirEn) {
       const err = wrap.querySelector("#xls-error");
       err.textContent = "";
       try {
-        const dialog = await import("@tauri-apps/plugin-dialog");
-        const ruta = await dialog.open({
+        const ruta = await dialogOpen({
           multiple: false,
           filters: [{ name: "CSV", extensions: ["csv", "txt"] }],
         });
         if (!ruta) return;
         wrap.querySelector("#xls-ruta").textContent = "Archivo: " + ruta;
-        const fs = await import("@tauri-apps/plugin-fs");
-        contenidoCsv = await fs.readTextFile(ruta);
+        contenidoCsv = await readTextFile(ruta);
         analisis = await invoke("csv_analizar", { contenido: contenidoCsv });
         mostrarMapeo();
       } catch (e) {

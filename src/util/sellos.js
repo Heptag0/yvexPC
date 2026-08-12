@@ -235,6 +235,295 @@ export function compararFases(d) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// MOTOR DE SUGERENCIAS — "¿cómo le quito este sello?"
+// ───────────────────────────────────────────────────────────────────────────
+// Puerto de src/base/sellos.ts del móvil: misma matemática, mismos
+// resultados. Como los umbrales son fórmulas, se puede calcular EXACTAMENTE
+// cuánto hay que bajar de cada ingrediente. Un detalle que no se puede
+// ignorar: quitar azúcar o grasa TAMBIÉN baja las calorías, así que
+// numerador y denominador se mueven juntos.
+//
+// Ejemplo con azúcares (límite: 10% de la energía). Si quitas Δ gramos:
+//     4(azúcar − Δ) / (calorías − 4Δ) < 0.10
+//   → 4·azúcar − 0.1·calorías < 3.6Δ
+//   → Δ > (4·azúcar − 0.1·calorías) / 3.6
+//
+// Sin esa corrección, una calculadora ingenua pediría quitar de más. Aquí se
+// resuelve la ecuación de verdad, y de paso se avisa cuando un solo ajuste
+// tumba dos sellos (porque las calorías también bajan).
+
+/**
+ * @typedef {Object} Sugerencia
+ * @property {string} selloId
+ * @property {string} etiqueta
+ * @property {boolean} viable   ¿se puede lograr bajando este ingrediente?
+ * @property {string} accion    qué hacer, en lenguaje llano
+ * @property {number} actual
+ * @property {number} objetivo
+ * @property {string} unidad
+ * @property {string} [bonus]   efecto colateral: qué más mejora si haces esto
+ * @property {string} [nota]
+ */
+
+const MARGEN_SUGERENCIA = 1.02; // 2% de holgura: quedar justo en el límite es arriesgado
+
+function fmtSug(n, dec = 1) {
+  return n.toFixed(dec).replace(/\.0$/, "");
+}
+
+/**
+ * Para cada sello, calcula qué haría falta para perderlo.
+ * Devuelve también un resumen de si el producto podría quedar limpio.
+ * @param {DatosNutrimentales} d
+ * @returns {{ sugerencias: Sugerencia[], quedariaLimpio: boolean, objetivoFinal: DatosNutrimentales, leyendasFijas: Array }}
+ */
+export function sugerenciasParaQuitarSellos(d) {
+  const r = calcularSellos(d);
+  const liquido = d.tipo === "liquido";
+  const cal = Math.max(0, d.caloriasKcal);
+  const az = Math.max(0, d.azucaresG);
+  const gs = Math.max(0, d.grasasSaturadasG);
+  const gt = Math.max(0, d.grasasTransG);
+  const sodio = Math.max(0, d.sodioMg);
+  const sug = [];
+
+  for (const s of r.sellos) {
+    if (s.id === "azucares") {
+      // Δ > (4·az − 0.1·cal) / 3.6, contando que las calorías también bajan.
+      const delta = Math.max(0, ((KCAL_POR_G_AZUCAR * az - 0.1 * cal) / 3.6) * MARGEN_SUGERENCIA);
+      const objetivo = az - delta;
+      // Si el objetivo sale negativo o casi cero, el producto ES azúcar en
+      // esencia (una mermelada, un dulce) y no hay ajuste que lo salve.
+      // Decirlo claro vale más que dar un número imposible.
+      if (objetivo <= 0.3) {
+        sug.push({
+          selloId: s.id, etiqueta: s.etiqueta, viable: false,
+          accion: "Este sello no se puede quitar solo bajando el azúcar",
+          actual: az, objetivo: 0, unidad: "g",
+          nota: `Casi toda la energía de tu producto viene del azúcar (${((KCAL_POR_G_AZUCAR * az / cal) * 100).toFixed(0)}%). Para bajar del 10% tendrías que quitarle prácticamente todo, y sería otro producto. Es normal en dulces, mermeladas y jarabes: llevan el sello y no pasa nada — solo hay que ponerlo.`,
+        });
+      } else {
+        const calNueva = cal - delta * KCAL_POR_G_AZUCAR;
+        const tieneSelloCal = r.sellos.some((x) => x.id === "calorias");
+        const quitaCal = tieneSelloCal && !liquido && calNueva < 275;
+        sug.push({
+          selloId: s.id, etiqueta: s.etiqueta, viable: true,
+          accion: `Baja el azúcar de ${fmtSug(az)} g a ${fmtSug(objetivo)} g por cada 100 ${liquido ? "ml" : "g"}`,
+          actual: az, objetivo, unidad: "g",
+          bonus: quitaCal
+            ? `Además pierdes el sello de calorías: al quitar ${fmtSug(delta)} g de azúcar, bajas ${fmtSug(delta * KCAL_POR_G_AZUCAR, 0)} kcal y quedas en ${fmtSug(calNueva, 0)}.`
+            : `Al quitar ${fmtSug(delta)} g de azúcar bajas ${fmtSug(delta * KCAL_POR_G_AZUCAR, 0)} kcal (de ${fmtSug(cal, 0)} a ${fmtSug(calNueva, 0)}).`,
+        });
+      }
+    }
+
+    if (s.id === "grasas_sat") {
+      const delta = Math.max(0, ((KCAL_POR_G_GRASA * gs - 0.1 * cal) / 8.1) * MARGEN_SUGERENCIA);
+      const objetivo = gs - delta;
+      if (objetivo <= 0.2) {
+        sug.push({
+          selloId: s.id, etiqueta: s.etiqueta, viable: false,
+          accion: "Este sello no se puede quitar solo bajando la grasa saturada",
+          actual: gs, objetivo: 0, unidad: "g",
+          nota: "Casi toda la energía de tu producto viene de grasa saturada. Cambiar mantequilla o manteca por aceite vegetal sí puede ayudar: baja las saturadas sin quitar grasa total.",
+        });
+      } else {
+        const calNueva = cal - delta * KCAL_POR_G_GRASA;
+        const tieneSelloCal = r.sellos.some((x) => x.id === "calorias");
+        const quitaCal = tieneSelloCal && !liquido && calNueva < 275;
+        sug.push({
+          selloId: s.id, etiqueta: s.etiqueta, viable: true,
+          accion: `Baja las grasas saturadas de ${fmtSug(gs)} g a ${fmtSug(objetivo)} g por cada 100 ${liquido ? "ml" : "g"}`,
+          actual: gs, objetivo, unidad: "g",
+          bonus: quitaCal
+            ? `Además pierdes el sello de calorías: quitar ${fmtSug(delta)} g de grasa baja ${fmtSug(delta * KCAL_POR_G_GRASA, 0)} kcal y te deja en ${fmtSug(calNueva, 0)}.`
+            : `Al quitar ${fmtSug(delta)} g de grasa saturada bajas ${fmtSug(delta * KCAL_POR_G_GRASA, 0)} kcal.`,
+          nota: "Cambiar mantequilla o manteca por aceite vegetal baja las saturadas sin quitar grasa total.",
+        });
+      }
+    }
+
+    if (s.id === "grasas_trans") {
+      const delta = Math.max(0, ((KCAL_POR_G_GRASA * gt - 0.01 * cal) / 8.91) * MARGEN_SUGERENCIA);
+      const objetivo = Math.max(0, gt - delta);
+      sug.push({
+        selloId: s.id, etiqueta: s.etiqueta, viable: true,
+        accion: `Baja las grasas trans de ${fmtSug(gt, 2)} g a ${fmtSug(objetivo, 2)} g por cada 100 ${liquido ? "ml" : "g"}`,
+        actual: gt, objetivo, unidad: "g",
+        nota: "Las grasas trans vienen sobre todo de grasas parcialmente hidrogenadas (margarina industrial, manteca vegetal). Cambiarlas por aceite o mantequilla suele eliminarlas casi por completo.",
+      });
+    }
+
+    if (s.id === "sodio") {
+      const sinCalorias = liquido && cal < 5;
+      let objetivo;
+      let explica;
+      if (sinCalorias) {
+        objetivo = 45 / MARGEN_SUGERENCIA;
+        explica = "Para bebidas sin calorías el límite es 45 mg.";
+      } else {
+        // Hay que quedar por debajo de AMBOS: 300 mg y 1 mg por kcal.
+        const porKcal = cal > 0 ? cal : Infinity;
+        objetivo = Math.min(300, porKcal) / MARGEN_SUGERENCIA;
+        explica = cal > 0 && porKcal < 300
+          ? `Con ${fmtSug(cal, 0)} kcal, el sodio no puede llegar a ${fmtSug(cal, 0)} mg (regla de 1 mg por kcal).`
+          : "El límite general es 300 mg.";
+      }
+      sug.push({
+        selloId: s.id, etiqueta: s.etiqueta, viable: true,
+        accion: `Baja el sodio de ${fmtSug(sodio, 0)} mg a ${fmtSug(objetivo, 0)} mg por cada 100 ${liquido ? "ml" : "g"}`,
+        actual: sodio, objetivo, unidad: "mg",
+        nota: `${explica} Una cucharadita de sal aporta unos 2,300 mg de sodio: bajarle tantito rinde mucho.`,
+      });
+    }
+
+    if (s.id === "calorias") {
+      // Solo se sugiere directo si no hay otro sello que ya lo resuelva —
+      // cuando hay azúcar o grasa de por medio, bajarlos ya tumba este.
+      const yaCubierto = r.sellos.some((x) => x.id === "azucares" || x.id === "grasas_sat");
+      if (!yaCubierto) {
+        if (!liquido) {
+          const objetivo = 275 / MARGEN_SUGERENCIA;
+          const bajar = cal - objetivo;
+          sug.push({
+            selloId: s.id, etiqueta: s.etiqueta, viable: true,
+            accion: `Baja de ${fmtSug(cal, 0)} a ${fmtSug(objetivo, 0)} kcal por cada 100 g`,
+            actual: cal, objetivo, unidad: "kcal",
+            nota: `Son ${fmtSug(bajar, 0)} kcal menos: equivalen a quitar ${fmtSug(bajar / KCAL_POR_G_AZUCAR)} g de azúcar o ${fmtSug(bajar / KCAL_POR_G_GRASA)} g de grasa.`,
+          });
+        } else {
+          const porAzucar = KCAL_POR_G_AZUCAR * az >= 8;
+          if (porAzucar) {
+            const objetivo = 2 / MARGEN_SUGERENCIA; // 8 kcal ÷ 4 kcal/g
+            sug.push({
+              selloId: s.id, etiqueta: s.etiqueta, viable: true,
+              accion: `Baja el azúcar de ${fmtSug(az)} g a menos de ${fmtSug(objetivo)} g por cada 100 ml`,
+              actual: az, objetivo, unidad: "g",
+              nota: "En bebidas el límite es más estricto: bastan 8 kcal provenientes de azúcares (2 g) para llevar el sello.",
+            });
+          } else {
+            const objetivo = 70 / MARGEN_SUGERENCIA;
+            sug.push({
+              selloId: s.id, etiqueta: s.etiqueta, viable: true,
+              accion: `Baja de ${fmtSug(cal, 0)} a ${fmtSug(objetivo, 0)} kcal por cada 100 ml`,
+              actual: cal, objetivo, unidad: "kcal",
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // ¿Quedaría sin sellos si aplica todo?
+  //
+  // Ojo: los ajustes están ACOPLADOS. Bajar azúcar reduce las calorías, y al
+  // bajar las calorías sube el porcentaje que representan las grasas (mismo
+  // gramaje, menos energía total). Así que aplicar las tres sugerencias de un
+  // jalón puede dejar sellos que antes no estaban.
+  //
+  // Se resuelve iterando: se aplican los ajustes, se recalcula, y si aún
+  // quedan sellos se vuelve a ajustar sobre los valores nuevos. Converge en
+  // pocas vueltas porque cada iteración reduce los excesos.
+  const ajustado = resolverIterandoSugerencias(d);
+  const final = calcularSellos(ajustado);
+  const limpio = final.sellos.length === 0;
+
+  // Las metas que se muestran deben ser las RESUELTAS, no las del primer
+  // paso: si se aplican por separado, el acoplamiento entre sellos hace que
+  // no funcionen juntas. Solo se corrigen cuando el producto sí puede quedar
+  // limpio (si no, la meta del primer paso ya es la información útil).
+  if (limpio) {
+    for (const s of sug) {
+      if (!s.viable) continue;
+      if (s.selloId === "azucares" && s.unidad === "g") s.objetivo = ajustado.azucaresG;
+      if (s.selloId === "grasas_sat") s.objetivo = ajustado.grasasSaturadasG;
+      if (s.selloId === "grasas_trans") s.objetivo = ajustado.grasasTransG;
+      if (s.selloId === "sodio") s.objetivo = ajustado.sodioMg;
+      if (s.selloId === "calorias" && s.unidad === "kcal") s.objetivo = ajustado.caloriasKcal;
+      // El texto de la acción se rehace con la meta corregida.
+      const u = s.unidad;
+      const dec = u === "mg" || u === "kcal" ? 0 : 1;
+      const nombre = s.selloId === "azucares" ? "el azúcar"
+        : s.selloId === "grasas_sat" ? "las grasas saturadas"
+        : s.selloId === "grasas_trans" ? "las grasas trans"
+        : s.selloId === "sodio" ? "el sodio" : "las calorías";
+      s.accion = `Baja ${nombre} de ${fmtSug(s.actual, dec)} a ${fmtSug(s.objetivo, dec)} ${u} por cada 100 ${d.tipo === "liquido" ? "ml" : "g"}`;
+    }
+  }
+
+  return {
+    sugerencias: sug,
+    quedariaLimpio: limpio,
+    objetivoFinal: ajustado,
+    leyendasFijas: r.leyendas,
+  };
+}
+
+/**
+ * Encuentra un juego de valores que no lleve sellos, ajustando poco a poco.
+ * Devuelve los datos ya ajustados (o los últimos alcanzados si no converge:
+ * hay productos que no pueden quedar limpios, como una mermelada).
+ * @param {DatosNutrimentales} d
+ * @param {number} [vueltas]
+ * @returns {DatosNutrimentales}
+ */
+function resolverIterandoSugerencias(d, vueltas = 12) {
+  let act = { ...d };
+
+  for (let i = 0; i < vueltas; i++) {
+    const r = calcularSellos(act);
+    if (r.sellos.length === 0) return act;
+
+    const cal = act.caloriasKcal;
+    let cambio = false;
+
+    for (const s of r.sellos) {
+      if (s.id === "azucares") {
+        const delta = Math.max(0, ((KCAL_POR_G_AZUCAR * act.azucaresG - 0.1 * cal) / 3.6) * MARGEN_SUGERENCIA);
+        const nuevo = act.azucaresG - delta;
+        if (nuevo < 0) return act; // imposible: el producto ES azúcar
+        act.caloriasKcal = Math.max(0, act.caloriasKcal - delta * KCAL_POR_G_AZUCAR);
+        act.azucaresG = nuevo;
+        cambio = true;
+      }
+      if (s.id === "grasas_sat") {
+        const delta = Math.max(0, ((KCAL_POR_G_GRASA * act.grasasSaturadasG - 0.1 * cal) / 8.1) * MARGEN_SUGERENCIA);
+        const nuevo = act.grasasSaturadasG - delta;
+        if (nuevo < 0) return act;
+        act.caloriasKcal = Math.max(0, act.caloriasKcal - delta * KCAL_POR_G_GRASA);
+        act.grasasSaturadasG = nuevo;
+        cambio = true;
+      }
+      if (s.id === "grasas_trans") {
+        const delta = Math.max(0, ((KCAL_POR_G_GRASA * act.grasasTransG - 0.01 * cal) / 8.91) * MARGEN_SUGERENCIA);
+        const nuevo = act.grasasTransG - delta;
+        if (nuevo < 0) return act;
+        act.caloriasKcal = Math.max(0, act.caloriasKcal - delta * KCAL_POR_G_GRASA);
+        act.grasasTransG = nuevo;
+        cambio = true;
+      }
+      if (s.id === "sodio") {
+        const liq = act.tipo === "liquido";
+        const sinCal = liq && act.caloriasKcal < 5;
+        const objetivo = sinCal ? 45 / MARGEN_SUGERENCIA
+          : Math.min(300, act.caloriasKcal > 0 ? act.caloriasKcal : Infinity) / MARGEN_SUGERENCIA;
+        if (act.sodioMg > objetivo) { act.sodioMg = objetivo; cambio = true; }
+      }
+      if (s.id === "calorias") {
+        // Solo si no hay otro sello que ya vaya a bajar las calorías.
+        const otro = r.sellos.some((x) => x.id === "azucares" || x.id === "grasas_sat");
+        if (!otro) {
+          const limite = act.tipo === "liquido" ? 70 : 275;
+          if (act.caloriasKcal >= limite) { act.caloriasKcal = limite / MARGEN_SUGERENCIA; cambio = true; }
+        }
+      }
+    }
+    if (!cambio) return act; // no se pudo mover nada más
+  }
+  return act;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Tamaño del sello según el envase — Tabla A1 del Apéndice A (Normativo)
 // ───────────────────────────────────────────────────────────────────────────
 

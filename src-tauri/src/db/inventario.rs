@@ -116,6 +116,7 @@ pub fn generar(con: &Connection, dispositivo_id: &str, rol: &str) -> Result<Repo
 pub struct MetricasInventario {
     pub total_productos: i64,      // productos activos (sin kits)
     pub valor_costo_centavos: i64, // inversión total a costo
+    pub valor_venta_centavos: i64, // valor potencial a precio de venta (toggle costo/venta en el frontend)
     pub margen_promedio: i64,      // % de margen ponderado por valor de venta
     pub stock_bajo: i64,           // en o por debajo del mínimo (con stock > 0)
     pub sin_stock: i64,            // en 0 exacto
@@ -164,6 +165,7 @@ pub fn metricas(con: &Connection, dispositivo_id: &str) -> Result<MetricasInvent
     Ok(MetricasInventario {
         total_productos: total,
         valor_costo_centavos: valor_costo_f.round() as i64,
+        valor_venta_centavos: valor_venta_f.round() as i64,
         margen_promedio: margen,
         stock_bajo: bajo,
         sin_stock: sin,

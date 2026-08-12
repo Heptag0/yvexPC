@@ -5,8 +5,10 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { escapar } from "../util/formato.js";
-
-let overlayTicket = null;
+import { abrirModal, cerrarModal } from "../util/modal.js";
+// Estático a propósito, no import() dinámico — el ofuscador de producción
+// rompe los import() dinámicos (ver el mismo arreglo en configuracion.js).
+import { print_thermal_printer } from "tauri-plugin-thermal-printer";
 
 /// Abre la vista previa de un ticket. Localiza la venta por `ventaId`
 /// (preferido: es único global; el folio solo es único POR caja y con la
@@ -41,30 +43,42 @@ let alCerrarTicket = null;
 let folioActual = null;
 let ventaIdActual = null;
 
+let modalTicket = null;
+
 function mostrar(ticket, alCerrar, ventaId) {
   cerrar();
   alCerrarTicket = typeof alCerrar === "function" ? alCerrar : null;
   folioActual = ticket.folio;
   ventaIdActual = ventaId ?? null;
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.innerHTML = `
+  // cerrarAlTocarFuera/cerrarConEscape en false: cerrar() SIEMPRE tiene que
+  // ejecutarse (dispara el callback alCerrar de quien pidió ver el ticket).
+  // Si el clic afuera lo resolviera el modal por su cuenta, ese callback
+  // nunca se dispararía.
+  modalTicket = abrirModal(
+    `
     <div class="tk-modal">
       <div class="tk-papel" style="--tk-cols:${ticket.ancho}">
+        <div class="tk-diente tk-diente--arriba"></div>
         ${ticket.lineas.map(lineaHTML).join("")}
+        <div class="tk-diente tk-diente--abajo"></div>
       </div>
       <div class="tk-acciones">
         <button class="btn-sec" id="tk-cerrar">Cerrar</button>
         <button class="btn-primario" id="tk-imprimir">Imprimir</button>
       </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  overlayTicket = overlay;
-  overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) cerrar();
+    </div>`,
+    { clase: "modal--sin-relleno", cerrarAlTocarFuera: false, cerrarConEscape: false }
+  );
+  function onEscapeTk(e) {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cerrar(); }
+  }
+  document.addEventListener("keydown", onEscapeTk, true);
+  modalTicket.parentElement.addEventListener("mousedown", (e) => {
+    if (e.target === modalTicket.parentElement) cerrar();
   });
-  overlay.querySelector("#tk-cerrar").addEventListener("click", cerrar);
-  overlay.querySelector("#tk-imprimir").addEventListener("click", imprimir);
+  modalTicket._onEscapeTk = onEscapeTk;
+  modalTicket.querySelector("#tk-cerrar").addEventListener("click", cerrar);
+  modalTicket.querySelector("#tk-imprimir").addEventListener("click", imprimir);
 }
 
 function lineaHTML(l) {
@@ -105,7 +119,6 @@ async function imprimir() {
 // El plugin genera los ESC/POS internamente a partir de estas secciones.
 async function imprimirEscpos(trabajo) {
   try {
-    const mod = await import("tauri-plugin-thermal-printer");
     const t = trabajo.ticket;
     const anchoMm = t.ancho === 32 ? "Mm58" : "Mm80";
 
@@ -122,7 +135,7 @@ async function imprimirEscpos(trabajo) {
       return { Text: { text: texto, styles: { align, bold } } };
     });
 
-    await mod.print_thermal_printer({
+    await print_thermal_printer({
       printer: trabajo.impresora || "",
       paper_size: anchoMm,
       options: { code_page: 0, encode: "WINDOWS_1252" },
@@ -197,9 +210,10 @@ function ticketAHtml(ticket) {
 }
 
 function cerrar() {
-  if (overlayTicket) {
-    overlayTicket.remove();
-    overlayTicket = null;
+  if (modalTicket) {
+    if (modalTicket._onEscapeTk) document.removeEventListener("keydown", modalTicket._onEscapeTk, true);
+    cerrarModal(modalTicket);
+    modalTicket = null;
   }
   if (alCerrarTicket) {
     const cb = alCerrarTicket;

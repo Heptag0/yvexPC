@@ -7,6 +7,12 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { pesos, centavos, escapar } from "../util/formato.js";
 import { icono } from "../util/iconos.js";
 import { ICONOS_DEPTO, svgIconoDepto, packDeConfig } from "../util/iconos-depto.js";
+import { abrirModal, cerrarModal } from "../util/modal.js";
+import { confirmar } from "../util/confirmar.js";
+// Estático a propósito, no import() dinámico — ver el comentario largo
+// en configuracion.js. El ofuscador de producción rompe los import()
+// dinámicos; uno estático se resuelve antes de que eso pueda pasar.
+import { open as dialogOpen } from "@tauri-apps/plugin-dialog";
 
 export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
   const esCajero = sesion.rol === "cajero";
@@ -39,7 +45,7 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
         <div class="inv-head-izq">
           <button class="inv-volver" id="inv-volver" aria-label="Volver">←</button>
           <div>
-            <h1>Inventario</h1>
+            <h1>Productos</h1>
             <p class="inv-head-sub" id="inv-head-sub">Cargando…</p>
           </div>
         </div>
@@ -52,11 +58,11 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
 
       ${verCostos ? `
       <div class="inv-metricas" id="inv-metricas">
-        <div class="inv-metrica inv-metrica--principal">
-          <span class="inv-metrica-lbl">Valor del inventario</span>
+        <button class="inv-metrica inv-metrica--principal inv-metrica--clic" id="met-valor-btn" type="button">
+          <span class="inv-metrica-lbl" id="met-valor-lbl">Valor del inventario</span>
           <span class="inv-metrica-val num" id="met-valor">—</span>
-          <span class="inv-metrica-pie" id="met-valor-pie">a costo</span>
-        </div>
+          <span class="inv-metrica-pie" id="met-valor-pie">a costo · toca para ver a precio de venta</span>
+        </button>
         <div class="inv-metrica">
           <span class="inv-metrica-lbl">Margen promedio</span>
           <span class="inv-metrica-val num" id="met-margen">—</span>
@@ -199,10 +205,10 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
   async function eliminarSeleccionados() {
     const n = seleccionados.size;
     if (n === 0) return;
-    const ok = await confirmar(
-      `¿Borrar ${n} producto${n > 1 ? "s" : ""}?`,
-      "Esta acción no se puede deshacer."
-    );
+    const ok = await confirmar("Esta acción no se puede deshacer.", {
+      titulo: `¿Borrar ${n} producto${n > 1 ? "s" : ""}?`,
+      ok: "Borrar", peligro: true,
+    });
     if (!ok) return;
     const btn = wrap.querySelector("#inv-elim-confirmar");
     btn.disabled = true;
@@ -244,6 +250,12 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
     }
   }
 
+  // "a costo" o "a precio de venta" — toca la tarjeta para alternar. Vive
+  // aquí (no es un dato del servidor) porque es solo cómo se MUESTRA el
+  // mismo par de cifras que ya llegan en cada carga.
+  let verValorAVenta = false;
+  let ultimasMetricas = null;
+
   // Carga las métricas de la franja superior (solo con permiso de costos).
   async function cargarMetricas() {
     if (!verCostos) return;
@@ -254,8 +266,9 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
       console.error("No se pudieron cargar métricas:", e);
       return;
     }
+    ultimasMetricas = m;
     const set = (id, val) => { const el = wrap.querySelector(id); if (el) el.textContent = val; };
-    set("#met-valor", pesos(m.valor_costo_centavos));
+    pintarValorInventario();
     set("#met-margen", m.margen_promedio + "%");
     set("#met-bajo", m.stock_bajo);
     set("#met-neg", m.negativos);
@@ -266,6 +279,34 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
     if (negBtn) negBtn.classList.toggle("inv-metrica--alerta", m.negativos > 0);
     const bajoBtn = wrap.querySelector("#met-bajo-btn");
     if (bajoBtn) bajoBtn.classList.toggle("inv-metrica--aviso", m.stock_bajo > 0);
+  }
+
+  // Repinta SOLO la tarjeta de valor, según el modo actual (costo/venta).
+  // "inventario_metricas" (Rust) ya trae valor_venta_centavos junto con
+  // valor_costo_centavos, así que no es un cálculo aproximado en el
+  // cliente — es el mismo dato exacto que respeta el filtro de búsqueda.
+  // El chequeo de `!= null` se conserva por si algún día corre contra un
+  // build viejo del backend que aún no tenga el campo.
+  function pintarValorInventario() {
+    const el = wrap.querySelector("#met-valor");
+    const pie = wrap.querySelector("#met-valor-pie");
+    const lbl = wrap.querySelector("#met-valor-lbl");
+    if (!el || !ultimasMetricas) return;
+    if (verValorAVenta) {
+      lbl.textContent = "Valor a precio de venta";
+      if (ultimasMetricas.valor_venta_centavos != null) {
+        el.textContent = pesos(ultimasMetricas.valor_venta_centavos);
+        const ganancia = ultimasMetricas.valor_venta_centavos - ultimasMetricas.valor_costo_centavos;
+        pie.textContent = `ganancia potencial ${pesos(ganancia)} · toca para ver a costo`;
+      } else {
+        el.textContent = "—";
+        pie.textContent = "Falta un dato del servidor para este cálculo (ver nota en el código)";
+      }
+    } else {
+      lbl.textContent = "Valor del inventario";
+      el.textContent = pesos(ultimasMetricas.valor_costo_centavos);
+      pie.textContent = "a costo · toca para ver a precio de venta";
+    }
   }
 
   async function cargarProductos() {
@@ -652,30 +693,44 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
     $("#m-kit-config-btn")?.addEventListener("click", abrirArmadorKit);
 
     function abrirArmadorKit() {
-      // Overlay secundario propio: NO usa abrirModal (que cerraría el modal de
-      // producto). Se monta encima y al cerrar deja el modal de producto intacto.
-      const overlay = document.createElement("div");
-      overlay.className = "modal-overlay modal-overlay--alto";
-      overlay.innerHTML = `
-        <div class="modal modal--chico" role="dialog" aria-modal="true">
-          <h2>Contenido del paquete</h2>
-          <p class="m-sub">El inventario se descuenta de estos productos al vender el paquete.</p>
-          <div class="kit-buscar-wrap">
-            <span class="kit-buscar-ico">${icono("buscar")}</span>
-            <input id="ak-buscar" class="kit-buscar" placeholder="Busca un producto para añadir…" autocomplete="off" />
-            <div class="kit-buscar-res" id="ak-res" hidden></div>
-          </div>
-          <ul class="kit-componentes" id="ak-lista"></ul>
-          <p class="kit-costo-calc" id="ak-costo"></p>
-          <div class="m-acciones"><span></span><button class="btn-primario" id="ak-listo">Listo</button></div>
-        </div>`;
-      document.body.appendChild(overlay);
-      const $$ = (s) => overlay.querySelector(s);
+      // Antes era un overlay a mano, con el comentario "no usa abrirModal
+      // porque cerraría el modal de producto" — el mismo bug ya visto en
+      // Venta. util/modal.js sí apila de verdad: esto SÍ es un modal-sobre-
+      // modal real (a diferencia de Departamentos, aquí ambos coexisten:
+      // cerrar el armador debe dejar el modal de producto intacto detrás).
+      //
+      // cerrarAlTocarFuera/cerrarConEscape en false porque cerrarArmador()
+      // necesita ejecutarse SIEMPRE (recalcula el resumen del kit) — si el
+      // cierre por fuera lo resolviera el modal por su cuenta sin pasar por
+      // aquí, el resumen se quedaría desactualizado.
+      const modal = abrirModal(
+        `
+        <h2>Contenido del paquete</h2>
+        <p class="m-sub">El inventario se descuenta de estos productos al vender el paquete.</p>
+        <div class="kit-buscar-wrap">
+          <span class="kit-buscar-ico">${icono("buscar")}</span>
+          <input id="ak-buscar" class="kit-buscar" placeholder="Busca un producto para añadir…" autocomplete="off" />
+          <div class="kit-buscar-res" id="ak-res" hidden></div>
+        </div>
+        <ul class="kit-componentes" id="ak-lista"></ul>
+        <p class="kit-costo-calc" id="ak-costo"></p>
+        <div class="m-acciones"><span></span><button class="btn-primario" id="ak-listo">Listo</button></div>
+      `,
+        { clase: "modal--chico", cerrarAlTocarFuera: false, cerrarConEscape: false }
+      );
+      const $$ = (s) => modal.querySelector(s);
       const cerrarArmador = () => {
-        overlay.remove();
+        document.removeEventListener("keydown", onEscapeKit, true);
+        cerrarModal(modal);
         actualizarResumenKit();
       };
-      overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) cerrarArmador(); });
+      function onEscapeKit(e) {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cerrarArmador(); }
+      }
+      document.addEventListener("keydown", onEscapeKit, true);
+      modal.parentElement.addEventListener("mousedown", (e) => {
+        if (e.target === modal.parentElement) cerrarArmador();
+      });
 
       const buscar = $$("#ak-buscar");
       const res = $$("#ak-res");
@@ -856,7 +911,9 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
     });
     if (esEdicion) {
       $("#m-eliminar").addEventListener("click", async () => {
-        if (!(await confirmar("¿Eliminar este producto?", "El producto dejará de aparecer, pero el histórico de ventas se conserva."))) return;
+        if (!(await confirmar("El producto dejará de aparecer, pero el histórico de ventas se conserva.", {
+          titulo: "¿Eliminar este producto?", ok: "Eliminar", peligro: true,
+        }))) return;
         try {
           await invoke("prod_eliminar", { id: prod.id });
           cerrarModal();
@@ -869,8 +926,7 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
 
     $("#m-foto-elegir").addEventListener("click", async () => {
       try {
-        const dialog = await import("@tauri-apps/plugin-dialog");
-        const ruta = await dialog.open({
+        const ruta = await dialogOpen({
           multiple: false,
           filters: [{ name: "Imagen", extensions: ["jpg", "jpeg", "png", "webp"] }],
         });
@@ -1169,7 +1225,8 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
           <button class="btn-sec" id="cat-cerrar">Cerrar</button>
         </div>
       `;
-      const modal = abrirModal(html, true);
+      cerrarModal();
+      const modal = abrirModal(html);
       const $ = (s) => modal.querySelector(s);
       $("#cat-cerrar").addEventListener("click", () => {
         cerrarModal();
@@ -1179,7 +1236,9 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
 
       modal.querySelectorAll("[data-cat-del]").forEach((b) =>
         b.addEventListener("click", async () => {
-          if (!(await confirmar("¿Quitar este departamento?", "Los productos que lo usan quedarán sin departamento."))) return;
+          if (!(await confirmar("Los productos que lo usan quedarán sin departamento.", {
+          titulo: "¿Quitar este departamento?", ok: "Quitar", peligro: true,
+        }))) return;
           try {
             await invoke("cat_eliminar", { id: b.dataset.catDel });
             categorias = await invoke("cat_listar");
@@ -1277,7 +1336,11 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
           </div>
         </div>
       `;
-      const modal = abrirModal(html, true);
+      // Reemplaza la lista de departamentos que está abierta detrás (mismo
+      // criterio que arriba): no queremos las dos superficies difuminadas
+      // encimadas, es un solo flujo lineal, no un modal-sobre-modal real.
+      cerrarModal();
+      const modal = abrirModal(html);
       const $ = (s) => modal.querySelector(s);
       let colorElegido = colorActual;
       let iconoElegido = iconoActual;
@@ -1350,63 +1413,11 @@ export function montarInventario(contenedor, sesion, alSalir, filtroInicial) {
   }
 }
 
-// ============================================================================
-// Infraestructura de modales y confirmación (compartida en esta vista)
-// ============================================================================
-let modalActual = null;
-
-function abrirModal(htmlInterno, reemplazar = false) {
-  if (modalActual && !reemplazar) cerrarModal();
-  if (modalActual && reemplazar) cerrarModal();
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${htmlInterno}</div>`;
-  document.body.appendChild(overlay);
-  modalActual = overlay;
-  overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) cerrarModal();
-  });
-  return overlay.querySelector(".modal");
-}
-
-function cerrarModal() {
-  if (modalActual) {
-    modalActual.remove();
-    modalActual = null;
-  }
-}
-
-// Confirmación con promesa (reemplaza al confirm() nativo, más elegante).
-function confirmar(titulo, detalle) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay modal-overlay--alto";
-    overlay.innerHTML = `
-      <div class="modal modal--chico" role="dialog" aria-modal="true">
-        <h2>${escaparLocal(titulo)}</h2>
-        ${detalle ? `<p class="m-sub">${escaparLocal(detalle)}</p>` : ""}
-        <div class="m-acciones"><span></span><div>
-          <button class="btn-sec" data-no>Cancelar</button>
-          <button class="btn-peligro" data-si>Sí, continuar</button>
-        </div></div>
-      </div>`;
-    document.body.appendChild(overlay);
-    const cerrar = (val) => {
-      overlay.remove();
-      resolve(val);
-    };
-    overlay.querySelector("[data-si]").addEventListener("click", () => cerrar(true));
-    overlay.querySelector("[data-no]").addEventListener("click", () => cerrar(false));
-    overlay.addEventListener("mousedown", (e) => {
-      if (e.target === overlay) cerrar(false);
-    });
-  });
-}
-function escaparLocal(s) {
-  const d = document.createElement("div");
-  d.textContent = s;
-  return d.innerHTML;
-}
+// La décima copia del mismo modal/confirmar propios que ya venimos
+// encontrando en cada vista. Aquí además el confirmar() local tenía una
+// FIRMA DISTINTA a la compartida — (titulo, detalle) en vez de
+// (mensaje, opciones) — así que los 3 sitios que lo llaman se adaptaron
+// más abajo, no solo el import.
 
 // Convierte texto "12.50" a centavos (1250). null si inválido.
 // permitirVacio: si true, "" devuelve 0 (para campos opcionales).

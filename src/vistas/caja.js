@@ -4,6 +4,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { pesos, escapar } from "../util/formato.js";
+import { abrirModal, cerrarModal } from "../util/modal.js";
+import { confirmar as confirmarPropio } from "../util/confirmar.js";
 
 export function montarCaja(contenedor, sesion, cajaSesion, alSalir, alCerrarSesion) {
   contenedor.innerHTML = "";
@@ -61,7 +63,7 @@ export function montarCaja(contenedor, sesion, cajaSesion, alSalir, alCerrarSesi
 
       <div class="caja-grid">
         <!-- EL número del corte: lo que debe haber en el cajón, físicamente. -->
-        <div class="caja-bloque caja-bloque--efectivo con-filo">
+        <div class="caja-bloque caja-bloque--efectivo con-luz">
           <div class="caja-bloque-label">Efectivo esperado en cajón</div>
           <div class="caja-bloque-valor caja-bloque-valor--hero num">${pesos(c.efectivo_esperado_centavos)}</div>
           <div class="caja-efvo-detalle">
@@ -75,7 +77,7 @@ export function montarCaja(contenedor, sesion, cajaSesion, alSalir, alCerrarSesi
         </div>
 
         <!-- Venta del día (contexto del turno). -->
-        <div class="caja-bloque caja-bloque--venta con-filo">
+        <div class="caja-bloque caja-bloque--venta">
           <div class="caja-bloque-label">Venta del día</div>
           <div class="caja-bloque-valor num">${pesos(c.total_vendido_centavos)}</div>
           <div class="caja-bloque-sub">${c.num_ventas} venta${c.num_ventas === 1 ? "" : "s"}</div>
@@ -157,7 +159,7 @@ export function montarCaja(contenedor, sesion, cajaSesion, alSalir, alCerrarSesi
         tipo = b.dataset.tipo;
       })
     );
-    $("#mv-cancelar").addEventListener("click", cerrarModal);
+    $("#mv-cancelar").addEventListener("click", () => cerrarModal());
     $("#mv-ok").addEventListener("click", async () => {
       const err = $("#mv-error");
       err.textContent = "";
@@ -226,7 +228,7 @@ export function montarCaja(contenedor, sesion, cajaSesion, alSalir, alCerrarSesi
       }
     });
 
-    $("#ci-cancelar").addEventListener("click", cerrarModal);
+    $("#ci-cancelar").addEventListener("click", () => cerrarModal());
     $("#ci-ok").addEventListener("click", async () => {
       const err = $("#ci-error");
       err.textContent = "";
@@ -255,7 +257,7 @@ export function montarCaja(contenedor, sesion, cajaSesion, alSalir, alCerrarSesi
     const cuadra = diferencia === 0;
     const html = `
       <div class="exito">
-        <div class="exito-check" style="${cuadra ? "" : "background:var(--alerta)"}">${cuadra ? "✓" : "≠"}</div>
+        <div class="exito-check ${cuadra ? "" : "exito-check--dif"}">${cuadra ? "✓" : "≠"}</div>
         <h2>Caja cerrada</h2>
         <div class="cierre-resumen">
           <div><span>Esperado</span><strong class="num">${pesos(esperado)}</strong></div>
@@ -276,63 +278,4 @@ export function montarCaja(contenedor, sesion, cajaSesion, alSalir, alCerrarSesi
       else alSalir();
     });
   }
-}
-
-// --- Modales locales ---
-let modalCaja = null;
-function abrirModal(html) {
-  if (modalCaja) cerrarModal();
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
-  document.body.appendChild(overlay);
-  modalCaja = overlay;
-  overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) cerrarModal();
-  });
-  return overlay.querySelector(".modal");
-}
-function cerrarModal() {
-  if (modalCaja) {
-    modalCaja.remove();
-    modalCaja = null;
-  }
-}
-
-// Confirmación propia (el confirm() nativo no funciona en Tauri).
-// Mismo patrón que venta.js; usa su propio overlay para convivir con
-// el modal de cierre que ya está abierto debajo.
-function confirmarPropio(mensaje, opciones = {}) {
-  const titulo = opciones.titulo || "Confirmar";
-  const textoOk = opciones.ok || "Aceptar";
-  const textoCancelar = opciones.cancelar || "Cancelar";
-  const peligro = opciones.peligro === true;
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay modal-overlay--confirm";
-    overlay.innerHTML = `
-      <div class="modal modal--confirm" role="dialog" aria-modal="true">
-        <h2 class="confirm-titulo">${titulo}</h2>
-        <p class="confirm-msg">${mensaje}</p>
-        <div class="confirm-acciones">
-          <button class="btn-sec" data-conf="0">${textoCancelar}</button>
-          <button class="${peligro ? "btn-peligro" : "btn-primario"}" data-conf="1">${textoOk}</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    const cerrar = (valor) => {
-      overlay.remove();
-      document.removeEventListener("keydown", onTecla);
-      resolve(valor);
-    };
-    function onTecla(e) {
-      if (e.key === "Escape") { e.preventDefault(); cerrar(false); }
-      else if (e.key === "Enter") { e.preventDefault(); cerrar(true); }
-    }
-    document.addEventListener("keydown", onTecla);
-    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) cerrar(false); });
-    overlay.querySelector('[data-conf="0"]').addEventListener("click", () => cerrar(false));
-    overlay.querySelector('[data-conf="1"]').addEventListener("click", () => cerrar(true));
-    setTimeout(() => overlay.querySelector('[data-conf="1"]').focus(), 40);
-  });
 }

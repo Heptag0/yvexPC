@@ -5,6 +5,15 @@ description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
 
+# Nombre del ejecutable, fijado aparte del nombre del paquete de arriba.
+# Sin esto, Cargo usa el nombre del paquete como nombre por defecto del
+# binario (yvexiq-pos.exe) -- justo lo que se veía en el Explorador de
+# Windows. El paquete se queda como está (lo usa Cargo internamente);
+# solo cambia el nombre del archivo .exe que ve el usuario.
+[[bin]]
+name = "YvexPOS"
+path = "src/main.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
@@ -32,3 +41,13 @@ rsfbclient = { version = "0.26.0", features = ["dynamic_loading"] }
 tauri-plugin-dialog = "2.7.1"
 tauri-plugin-fs = "2.5.1"
 ureq = { version = "2", features = ["json"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-autostart = "2"
+
+# Perfil de release: quita símbolos de depuración del binario final. No
+# hace que el Rust sea "más" ilegible (ya era ilegible compilado), pero
+# reduce el poco rastro extra que pudiera quedar para quien intente
+# desensamblarlo, y de paso el .exe pesa un poco menos.
+[profile.release]
+strip = true

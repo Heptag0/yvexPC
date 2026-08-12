@@ -13,10 +13,14 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-fs": "^2.5.1",
-    "tauri-plugin-thermal-printer": "^2.0.1"
+    "tauri-plugin-thermal-printer": "^2.0.1",
+    "@tauri-apps/plugin-updater": "^2",
+    "@tauri-apps/plugin-process": "^2",
+    "@tauri-apps/plugin-autostart": "^2"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
-    "vite": "^6"
+    "vite": "^6",
+    "vite-plugin-javascript-obfuscator": "^3.1.0"
   }
 }

@@ -1,10 +1,13 @@
 // YvexPOS — utilidades de formato compartidas.
 // Dinero en centavos enteros (fuente de verdad); aquí solo se formatea para mostrar.
 
-/// Centavos enteros -> string de pesos "$1,800.00".
+/// Centavos enteros -> string de pesos "$1,800.00" (o "-$1,800.00" si es negativo).
+/// El signo va ANTES del símbolo de peso, nunca entre el $ y el número.
 export function pesos(cent) {
   const n = (cent ?? 0) / 100;
-  return "$" + n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const signo = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  return signo + "$" + abs.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /// Centavos enteros -> string decimal sin símbolo "18.00" (para inputs).

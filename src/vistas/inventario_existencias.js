@@ -7,6 +7,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { pesos, centavos, escapar } from "../util/formato.js";
+import { icono } from "../util/iconos.js";
 
 export function montarInventario(contenedor, sesion, alSalir, irAImportar) {
   const verCostos = sesion.rol !== "cajero";
@@ -33,28 +34,33 @@ export function montarInventario(contenedor, sesion, alSalir, irAImportar) {
       <p class="inv-sub">Gestiona las existencias de tu negocio. Para crear o editar productos, usa el módulo Productos.</p>
       <div class="invex-grid">
         <button class="invex-card" data-accion="resurtir">
-          <span class="invex-ico">📥</span>
+          <span class="invex-ico">${icono("entrada")}</span>
           <span class="invex-nombre">Agregar a inventario</span>
           <span class="invex-desc">Registrar entrada de mercancía y actualizar costo/precio</span>
         </button>
         <button class="invex-card" data-accion="ajuste">
-          <span class="invex-ico">🔧</span>
+          <span class="invex-ico">${icono("configuracion")}</span>
           <span class="invex-nombre">Ajustes</span>
           <span class="invex-desc">Corregir stock por merma o conteo físico</span>
         </button>
         <button class="invex-card" data-accion="conteo">
-          <span class="invex-ico">📋</span>
+          <span class="invex-ico">${icono("existencias")}</span>
           <span class="invex-nombre">Realizar inventario</span>
           <span class="invex-desc">Contar existencias por departamento y corregir diferencias</span>
         </button>
         ${verCostos ? `
         <button class="invex-card" data-accion="reporte">
-          <span class="invex-ico">📊</span>
+          <span class="invex-ico">${icono("reportes")}</span>
           <span class="invex-nombre">Reporte de inventario</span>
           <span class="invex-desc">Valor, unidades y desglose por categoría</span>
+        </button>
+        <button class="invex-card" data-accion="bitacora">
+          <span class="invex-ico">${icono("historial")}</span>
+          <span class="invex-nombre">Registro de movimientos</span>
+          <span class="invex-desc">Ventas, ajustes de stock y cambios de catálogo — quién, cuándo y desde dónde</span>
         </button>` : ""}
         <button class="invex-card" data-accion="importar">
-          <span class="invex-ico">📦</span>
+          <span class="invex-ico">${icono("importar")}</span>
           <span class="invex-nombre">Importar</span>
           <span class="invex-desc">Traer catálogo desde otro POS</span>
         </button>
@@ -71,6 +77,7 @@ export function montarInventario(contenedor, sesion, alSalir, irAImportar) {
     else if (accion === "ajuste") pantallaMovimiento("ajuste");
     else if (accion === "conteo") pantallaConteoDepto();
     else if (accion === "reporte") pantallaReporte();
+    else if (accion === "bitacora") pantallaBitacora();
     else if (accion === "importar") {
       if (typeof irAImportar === "function") irAImportar();
     }
@@ -96,7 +103,7 @@ export function montarInventario(contenedor, sesion, alSalir, irAImportar) {
         ? "Busca el producto, indica cuánto entró y, si quieres, actualiza su costo y precio."
         : "Busca el producto y corrige su stock por merma o conteo físico."}</p>
       <div class="invex-buscar-wrap">
-        <span class="inv-buscar-ico">🔍</span>
+        <span class="inv-buscar-ico">${icono("buscar")}</span>
         <input id="mov-buscar" class="inv-buscar" placeholder="Buscar producto por nombre o código…" autocomplete="off" autofocus />
       </div>
       <div id="mov-resultados" class="invex-resultados"></div>
@@ -586,7 +593,7 @@ export function montarInventario(contenedor, sesion, alSalir, irAImportar) {
     cont.innerHTML = `
       <p class="inv-sub">Escribe la cantidad contada de cada producto. Si usas lector de barras, escanea el producto y se sumará +1 automáticamente.</p>
       <div class="contar-escaner">
-        <span class="inv-buscar-ico">📷</span>
+        <span class="inv-buscar-ico">${icono("lector")}</span>
         <input id="contar-scan" class="inv-buscar" placeholder="Escanea un código para sumar +1…" autocomplete="off" />
       </div>
       <div class="contar-lista">
@@ -770,6 +777,84 @@ export function montarInventario(contenedor, sesion, alSalir, irAImportar) {
       </div>`;
     wrap.querySelector("#sub-volver").addEventListener("click", renderHub);
     wrap.querySelector("#conteo-fin").addEventListener("click", renderHub);
+  }
+
+  // -------------------------------------------------------- Registro de movimientos
+  const ICONO_TIPO = {
+    venta: "venta",
+    entrada: "entrada",
+    merma: "existencias",
+    ajuste_conteo: "existencias",
+    producto_creado: "mas",
+    producto_editado: "configuracion",
+    producto_eliminado: "codigo",
+  };
+
+  function pantallaBitacora() {
+    const hoy = new Date().toISOString().slice(0, 10);
+
+    wrap.innerHTML = `${cabecera("Registro de movimientos")}
+      <p class="inv-sub">Ventas, ajustes de stock y cambios de catálogo — quién, cuándo y desde qué dispositivo.</p>
+      <div class="bit-filtros">
+        <label>Desde
+          <input type="date" id="bit-desde" value="${hoy}" />
+        </label>
+        <label>Hasta
+          <input type="date" id="bit-hasta" value="${hoy}" />
+        </label>
+        <label>Tipo
+          <select id="bit-categoria">
+            <option value="">Todos</option>
+            <option value="venta">Ventas</option>
+            <option value="stock">Ajustes de stock</option>
+            <option value="catalogo">Catálogo</option>
+          </select>
+        </label>
+        <button class="btn-sec" id="bit-buscar">Buscar</button>
+      </div>
+      <div id="bit-cont"><p class="inv-sub">Cargando…</p></div>
+    `;
+    wrap.querySelector("#sub-volver").addEventListener("click", renderHub);
+    wrap.querySelector("#bit-buscar").addEventListener("click", cargarBitacora);
+    cargarBitacora();
+
+    async function cargarBitacora() {
+      const cont = wrap.querySelector("#bit-cont");
+      cont.innerHTML = `<p class="inv-sub">Cargando…</p>`;
+      const filtro = {
+        desde: wrap.querySelector("#bit-desde").value || null,
+        hasta: wrap.querySelector("#bit-hasta").value || null,
+        categoria: wrap.querySelector("#bit-categoria").value || null,
+      };
+      let movimientos;
+      try {
+        movimientos = await invoke("bitacora_listar", { filtro });
+      } catch (e) {
+        cont.innerHTML = `<p class="m-error">${escapar(String(e))}</p>`;
+        return;
+      }
+      if (movimientos.length === 0) {
+        cont.innerHTML = `<p class="inv-sub">No hay movimientos en ese rango.</p>`;
+        return;
+      }
+      cont.innerHTML = `<div class="bit-lista">${movimientos.map(filaBitacora).join("")}</div>`;
+    }
+
+    function filaBitacora(m) {
+      const fecha = new Date(m.creado_en);
+      const fechaTxt = isNaN(fecha)
+        ? m.creado_en
+        : fecha.toLocaleString("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      return `
+        <div class="bit-item">
+          <span class="bit-item-ico">${icono(ICONO_TIPO[m.tipo] || "existencias")}</span>
+          <div class="bit-item-cuerpo">
+            <span class="bit-item-desc">${escapar(m.descripcion)}</span>
+            <span class="bit-item-meta">${escapar(m.usuario_nombre)} · ${fechaTxt}</span>
+          </div>
+          ${m.monto_centavos != null ? `<span class="bit-item-monto num">${pesos(m.monto_centavos)}</span>` : ""}
+        </div>`;
+    }
   }
 
   function fmtStock(n, unidad) {

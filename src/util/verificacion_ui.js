@@ -5,6 +5,7 @@
 // corregir el correo si se escribió mal.
 
 import { invoke } from "@tauri-apps/api/core";
+import { icono } from "./iconos.js";
 
 /**
  * Monta la verificación dentro de `contenedor`.
@@ -20,7 +21,7 @@ export function montarVerificacionInline(contenedor, email, opciones = {}) {
   function pintar() {
     contenedor.innerHTML = `
       <div class="verif-inline">
-        <div class="vinc-icono">📧</div>
+        <div class="vinc-icono">${icono("correo")}</div>
         <h3 class="vinc-titulo">Verifica tu correo</h3>
         <p class="vinc-desc">
           Enviamos un código de 6 dígitos a<br>
@@ -116,7 +117,7 @@ export function montarVerificacionInline(contenedor, email, opciones = {}) {
   function pintarExito() {
     contenedor.innerHTML = `
       <div class="verif-inline">
-        <div class="vinc-icono">✅</div>
+        <div class="vinc-icono">${icono("verificado")}</div>
         <h3 class="vinc-titulo">¡Correo verificado!</h3>
         <p class="vinc-desc">Tu cuenta ya está asegurada. Gracias.</p>
         <button type="button" class="vinc-btn-primario" id="vif-listo">Listo</button>

@@ -75,7 +75,11 @@ export function montarInicio(contenedor, sesion, cajaSesion, navegar) {
   const $ = (s) => wrap.querySelector(s);
 
   function tarjeta(label, valor, extra, id) {
-    return `<div class="ini-card con-filo ${extra}">
+    // La tarjeta --principal (Venta del día) es la única cifra "en vivo" de
+    // Inicio: recibe con-luz en vez del filo genérico, mismo criterio que
+    // el efectivo esperado del Corte y "por cobrar" de Clientes.
+    const filo = extra === "ini-card--principal" ? "con-luz" : "con-filo";
+    return `<div class="ini-card ${filo} ${extra}">
       <span class="ini-card-label">${label}</span>
       <span class="ini-card-valor num" id="${id}">${valor}</span>
     </div>`;

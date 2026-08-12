@@ -92,7 +92,7 @@ export function montarCredito(contenedor, sesion, cajaSesion, alSalir) {
       c.limite_credito_centavos > 0 && c.saldo_centavos > c.limite_credito_centavos);
     const resumen = wrap.querySelector("#cr-resumen");
     resumen.innerHTML = `
-      <div class="cr-hero con-filo">
+      <div class="cr-hero con-luz">
         <span class="cr-card-label">Dinero en la calle</span>
         <span class="cr-hero-valor num" id="cr-hero-valor">${pesos(0)}</span>
         <span class="cr-hero-sub num">${numDeudores} cliente${numDeudores === 1 ? "" : "s"} con deuda${sobreLimite.length ? ` · ${sobreLimite.length} sobre su límite` : ""}</span>

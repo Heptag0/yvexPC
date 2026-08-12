@@ -10,6 +10,7 @@ import { pesos, escapar } from "../util/formato.js";
 import { icono } from "../util/iconos.js";
 import { confirmar } from "../util/confirmar.js";
 import { dejarCotizacionParaVenta } from "../util/handoff.js";
+import { abrirModal, cerrarModal } from "../util/modal.js";
 
 const ETIQUETA_ESTADO = {
   abierta: "Abierta",
@@ -119,20 +120,18 @@ export function montarCotizaciones(contenedor, sesion, alSalir, navegar) {
       </tr>`;
   }
 
-  // --------------------------------------------------------- Modal genérico
-  let modalActivo = null;
-  function abrirModal(html, opciones) {
-    if (modalActivo) cerrarModal();
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay" + (opciones && opciones.alto ? " modal-overlay--alto" : "");
-    overlay.innerHTML = `<div class="modal${opciones && opciones.ancho ? " modal--ancho" : ""}" role="dialog" aria-modal="true">${html}</div>`;
-    document.body.appendChild(overlay);
-    modalActivo = overlay;
-    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) cerrarModal(); });
-    return overlay.querySelector(".modal");
-  }
-  function cerrarModal() {
-    if (modalActivo) { modalActivo.remove(); modalActivo = null; }
+  // Este era EXACTAMENTE el bug reportado: el buscador de catálogo
+  // ("+ Del catálogo") se abre desde DENTRO del constructor de cotización,
+  // y con un modal singleton eso cerraba el constructor al elegir un
+  // producto — había que empezar de nuevo. util/modal.js apila de verdad,
+  // así que ahora conviven sin pisarse.
+  //
+  // {alto:true}/{ancho:true} -> se traducen a {clase} más abajo.
+
+  // Aviso de error (alert() nativo está bloqueado por WebView2 en Tauri —
+  // había 4 casos que fallaban en silencio: el usuario nunca veía el error).
+  function aviso(mensaje) {
+    return confirmar(String(mensaje), { titulo: "No se pudo completar", ok: "Entendido" });
   }
 
   // ------------------------------------------------------- Ver / imprimir
@@ -141,7 +140,7 @@ export function montarCotizaciones(contenedor, sesion, alSalir, navegar) {
     try {
       c = await invoke("cot_obtener", { id });
     } catch (e) {
-      return alert(String(e));
+      return aviso(e);
     }
     if (!c) return;
     const modal = abrirModal(`
@@ -169,7 +168,7 @@ export function montarCotizaciones(contenedor, sesion, alSalir, navegar) {
           ${c.estado === "abierta" ? `<button class="btn-primario" id="cot-v-convertir">Convertir a venta</button>` : ""}
         </div>
       </div>
-    `, { ancho: true });
+    `, { clase: "modal--ancho" });
     const $ = (s) => modal.querySelector(s);
 
     $("#cot-v-imprimir").addEventListener("click", () => imprimirCotizacion(c));
@@ -182,7 +181,7 @@ export function montarCotizaciones(contenedor, sesion, alSalir, navegar) {
         await invoke("cot_eliminar", { id: c.id });
         cerrarModal();
         cargar();
-      } catch (e) { alert(String(e)); }
+      } catch (e) { aviso(e); }
     });
     const btnCancelar = $("#cot-v-cancelar");
     if (btnCancelar) btnCancelar.addEventListener("click", async () => {
@@ -194,7 +193,7 @@ export function montarCotizaciones(contenedor, sesion, alSalir, navegar) {
         await invoke("cot_cancelar", { id: c.id });
         cerrarModal();
         cargar();
-      } catch (e) { alert(String(e)); }
+      } catch (e) { aviso(e); }
     });
     const btnConvertir = $("#cot-v-convertir");
     if (btnConvertir) btnConvertir.addEventListener("click", async () => {
@@ -204,7 +203,7 @@ export function montarCotizaciones(contenedor, sesion, alSalir, navegar) {
         cerrarModal();
         navegar("venta");
       } catch (e) {
-        alert(String(e));
+        aviso(e);
       }
     });
   }
@@ -329,7 +328,7 @@ export function montarCotizaciones(contenedor, sesion, alSalir, navegar) {
           <button class="btn-primario" id="cm-guardar">Crear cotización</button>
         </div>
       </div>
-    `, { ancho: true });
+    `, { clase: "modal--ancho" });
     const $ = (s) => modal.querySelector(s);
 
     function recalcularYPintar() {
@@ -435,7 +434,7 @@ export function montarCotizaciones(contenedor, sesion, alSalir, navegar) {
       <input id="bp-buscar" class="inv-buscar" placeholder="Buscar producto por nombre o código…" autocomplete="off" />
       <div id="bp-lista" class="sc-lista"></div>
       <div class="m-acciones"><span></span><button class="btn-sec" id="bp-cerrar">Cerrar</button></div>
-    `, { alto: true });
+    `);
     const $ = (s) => modal.querySelector(s);
     $("#bp-cerrar").addEventListener("click", cerrarModal);
     const input = $("#bp-buscar");

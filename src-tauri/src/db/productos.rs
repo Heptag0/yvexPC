@@ -209,7 +209,7 @@ pub fn por_codigo(con: &Connection, rol: &str, codigo: &str) -> Result<Option<Pr
     .map_err(|e| format!("error al buscar por código: {e}"))
 }
 
-pub fn crear(con: &Connection, dispositivo_id: &str, d: &NuevoProducto) -> Result<String, String> {
+pub fn crear(con: &Connection, dispositivo_id: &str, usuario_pos_id: &str, d: &NuevoProducto) -> Result<String, String> {
     validar_producto_base(&d.nombre, &d.unidad, d.iva_tasa, d.precio_venta_centavos)?;
     let nombre = d.nombre.trim();
     // Código vacío -> NULL (productos sin código).
@@ -287,11 +287,16 @@ pub fn crear(con: &Connection, dispositivo_id: &str, d: &NuevoProducto) -> Resul
     encolar_sync(con, "productos", &id, "insert", &payload)
         .map_err(|e| format!("error al encolar producto: {e}"))?;
 
+    super::bitacora::registrar(
+        con, "producto_creado", &format!("Creó el producto \"{nombre}\""),
+        Some("producto"), Some(&id), usuario_pos_id, dispositivo_id,
+    );
+
     Ok(id)
 }
 
 /// Edita campos del producto. NO toca `stock` (eso es exclusivo de ajustes).
-pub fn editar(con: &Connection, d: &EditarProducto) -> Result<(), String> {
+pub fn editar(con: &Connection, usuario_pos_id: &str, dispositivo_id: &str, d: &EditarProducto) -> Result<(), String> {
     validar_producto_base(&d.nombre, &d.unidad, d.iva_tasa, d.precio_venta_centavos)?;
     let nombre = d.nombre.trim();
     let codigo = d.codigo_barras.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(|s| s.to_uppercase());
@@ -379,10 +384,21 @@ pub fn editar(con: &Connection, d: &EditarProducto) -> Result<(), String> {
     });
     encolar_sync(con, "productos", &d.id, "update", &payload)
         .map_err(|e| format!("error al encolar producto: {e}"))?;
+
+    super::bitacora::registrar(
+        con, "producto_editado", &format!("Editó el producto \"{nombre}\""),
+        Some("producto"), Some(&d.id), usuario_pos_id, dispositivo_id,
+    );
+
     Ok(())
 }
 
-pub fn eliminar(con: &Connection, id: &str) -> Result<(), String> {
+pub fn eliminar(con: &Connection, usuario_pos_id: &str, dispositivo_id: &str, id: &str) -> Result<(), String> {
+    let nombre: Option<String> = con
+        .query_row("SELECT nombre FROM productos WHERE id = ?1", rusqlite::params![id], |r| r.get(0))
+        .optional()
+        .map_err(|e| format!("error al leer producto: {e}"))?;
+
     let ts = ahora();
     let n = con
         .execute(
@@ -396,6 +412,13 @@ pub fn eliminar(con: &Connection, id: &str) -> Result<(), String> {
     let payload = serde_json::json!({ "id": id, "eliminado": 1, "actualizado_en": ts });
     encolar_sync(con, "productos", id, "update", &payload)
         .map_err(|e| format!("error al encolar baja de producto: {e}"))?;
+
+    let nombre = nombre.unwrap_or_else(|| "(sin nombre)".to_string());
+    super::bitacora::registrar(
+        con, "producto_eliminado", &format!("Eliminó el producto \"{nombre}\""),
+        Some("producto"), Some(id), usuario_pos_id, dispositivo_id,
+    );
+
     Ok(())
 }
 

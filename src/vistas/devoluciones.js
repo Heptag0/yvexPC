@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { pesos, escapar } from "../util/formato.js";
 import { verTicket } from "./ticket.js";
 import { confirmar } from "../util/confirmar.js";
+import { icono } from "../util/iconos.js";
 
 const ETIQUETA_METODO = {
   efectivo: "Efectivo",
@@ -125,7 +126,7 @@ export function montarDevoluciones(contenedor, sesion, cajaSesion, alSalir) {
           <div class="dev-ticket-total num">${pesos(v.total_centavos)}</div>
           <div class="dev-ticket-estado dev-estado--${v.estado}">${etiquetaEstado(v.estado)}</div>
         </button>
-        <button class="dev-ticket-reimprimir" data-reimprimir="${v.id}">🖨 Reimprimir</button>
+        <button class="dev-ticket-reimprimir" data-reimprimir="${v.id}">${icono("impresora")} Reimprimir</button>
       </div>`;
   }
 

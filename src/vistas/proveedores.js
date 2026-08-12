@@ -6,6 +6,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { pesos, escapar } from "../util/formato.js";
 import { confirmar } from "../util/confirmar.js";
+import { abrirModal, cerrarModal } from "../util/modal.js";
 
 const DIAS = [
   { n: 1, corto: "L" }, { n: 2, corto: "M" }, { n: 3, corto: "Mi" },
@@ -133,26 +134,9 @@ export function montarProveedores(contenedor, sesion, alSalir) {
       </tr>`;
   }
 
-  // --------------------------------------------------------- Modal genérico
-  let modalActivo = null;
-  function abrirModal(html, opciones) {
-    if (modalActivo) cerrarModal();
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay" + (opciones && opciones.alto ? " modal-overlay--alto" : "");
-    overlay.innerHTML = `<div class="modal${opciones && opciones.chico ? " modal--chico" : ""}" role="dialog" aria-modal="true">${html}</div>`;
-    document.body.appendChild(overlay);
-    modalActivo = overlay;
-    overlay.addEventListener("mousedown", (e) => {
-      if (e.target === overlay) cerrarModal();
-    });
-    return overlay.querySelector(".modal");
-  }
-  function cerrarModal() {
-    if (modalActivo) {
-      modalActivo.remove();
-      modalActivo = null;
-    }
-  }
+  // La duodécima copia del mismo modal local del programa. Aquí además hay
+  // un caso real de modal-sobre-modal: el Historial puede abrir "+ Compra"
+  // encima (más abajo), y con el singleton viejo eso cerraba el historial.
 
   // ------------------------------------------------- Alta / edición proveedor
   function abrirModalProveedor(prov) {
@@ -260,7 +244,7 @@ export function montarProveedores(contenedor, sesion, alSalir) {
           <button class="btn-primario" id="ph-compra">+ Compra</button>
         </div>
       </div>
-    `, { alto: true });
+    `, { clase: "modal--ancho" });
     const $ = (s) => modal.querySelector(s);
     $("#ph-cerrar").addEventListener("click", cerrarModal);
     $("#ph-compra").addEventListener("click", () => {
@@ -303,7 +287,7 @@ export function montarProveedores(contenedor, sesion, alSalir) {
           const actualizado = proveedores.find((x) => x.id === prov.id);
           if (actualizado) abrirHistorial(actualizado);
         } catch (e) {
-          alert(String(e));
+          await confirmar(String(e), { titulo: "No se pudo eliminar", ok: "Entendido" });
         }
       })
     );

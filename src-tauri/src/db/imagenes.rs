@@ -9,10 +9,34 @@
 //! decide cuándo llamar a `guardar`/`borrar` y guarda la ruta resultante en
 //! `productos.imagen_ruta`.
 
+use std::io::Read;
 use std::path::PathBuf;
 use tauri::Manager;
 
 const EXTENSIONES_PERMITIDAS: [&str; 4] = ["jpg", "jpeg", "png", "webp"];
+
+/// Verifica el contenido REAL del archivo, no solo su extensión. Confiar
+/// solo en el nombre es fácil de falsear (renombrar "cualquier_cosa.exe" a
+/// "foto.jpg" no cambia lo que hay adentro) — esto revisa los primeros
+/// bytes contra la firma real de JPEG/PNG/WEBP.
+fn es_imagen_valida(datos: &[u8]) -> bool {
+    if datos.len() < 12 {
+        return false;
+    }
+    // JPEG: FF D8 FF
+    if datos.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return true;
+    }
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if datos.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return true;
+    }
+    // WEBP: "RIFF" + 4 bytes de tamaño + "WEBP"
+    if &datos[0..4] == b"RIFF" && &datos[8..12] == b"WEBP" {
+        return true;
+    }
+    false
+}
 
 fn carpeta_imagenes(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let base = app
@@ -44,6 +68,16 @@ pub fn guardar(app: &tauri::AppHandle, ruta_origen: &str) -> Result<String, Stri
         return Err("Formato no soportado. Usa JPG, PNG o WEBP.".into());
     }
 
+    // El nombre dice que es una imagen — confirmamos que el CONTENIDO
+    // también lo sea, antes de copiar nada.
+    let mut cabecera = [0u8; 12];
+    let mut archivo = std::fs::File::open(&origen)
+        .map_err(|e| format!("no se pudo abrir el archivo: {e}"))?;
+    let leidos = archivo.read(&mut cabecera).unwrap_or(0);
+    if !es_imagen_valida(&cabecera[..leidos]) {
+        return Err("El archivo no parece ser una imagen válida.".into());
+    }
+
     let carpeta = carpeta_imagenes(app)?;
     let nombre = format!("{}.{}", super::comun::nuevo_id(), ext);
     let destino = carpeta.join(&nombre);
@@ -72,6 +106,9 @@ pub fn borrar(ruta: &str) {
 pub fn guardar_bytes(app: &tauri::AppHandle, datos: &[u8], extension: &str) -> Result<String, String> {
     if datos.is_empty() {
         return Err("La imagen recibida está vacía.".into());
+    }
+    if !es_imagen_valida(datos) {
+        return Err("Los datos recibidos no son una imagen válida.".into());
     }
     let carpeta = carpeta_imagenes(app)?;
     let nombre = format!("{}.{}", super::comun::nuevo_id(), extension);

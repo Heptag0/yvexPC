@@ -2,16 +2,19 @@
 //! a venta. Pensado para giros donde "cuánto me costaría" es el primer paso
 //! (construcción, materiales, servicios), no solo abarrotes.
 //!
-//! ⚠️ LOCAL-ONLY (v1): no se encola a `cola_sync` todavía — mismo punto de
-//! partida que tuvieron proveedores y lealtad. La receta para sincronizarlo
-//! ya está probada en otros módulos si hace falta después.
+//! SINCRONIZA (cotizaciones + cotizacion_lineas): mismo mecanismo que ventas
+//! — encolar_sync() sube, y la baja se aplica en sync_pull.rs. El folio es
+//! correlativo LOCAL por dispositivo (puede repetirse entre cajas, igual que
+//! en ventas); lo único que de verdad identifica una cotización entre
+//! dispositivos es su id (UUID).
 //!
 //! Dinero SIEMPRE en centavos enteros. Soft delete vía `eliminado`.
 
 use rusqlite::{Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
-use super::comun::{ahora, nuevo_id};
+use super::comun::{ahora, encolar_sync, nuevo_id};
 
 // ============================================================================
 // Tipos
@@ -164,21 +167,42 @@ pub fn crear(con: &Connection, dispositivo_id: &str, d: &DatosCotizacion) -> Res
     )
     .map_err(|e| format!("error al crear cotización: {e}"))?;
 
+    let payload_cot = json!({
+        "id": id, "folio": folio, "cliente_nombre": cliente_nombre,
+        "cliente_telefono": cliente_telefono, "cliente_correo": cliente_correo,
+        "notas": notas, "subtotal_centavos": subtotal, "descuento_centavos": descuento,
+        "total_centavos": total, "valida_hasta": valida_hasta, "estado": "abierta",
+        "venta_id": null, "eliminado": 0, "creado_en": ts, "actualizado_en": ts,
+    });
+    encolar_sync(con, "cotizaciones", &id, "insert", &payload_cot)
+        .map_err(|e| format!("error al encolar cotización: {e}"))?;
+
     for l in &d.lineas {
         let bruto = (l.precio_unitario_centavos as f64 * l.cantidad).round() as i64;
         let desc_linea = l.descuento_linea_centavos.unwrap_or(0).max(0);
         let total_linea = (bruto - desc_linea).max(0);
+        let linea_id = nuevo_id();
         con.execute(
             "INSERT INTO cotizacion_lineas
                (id, cotizacion_id, producto_id, descripcion, cantidad,
                 precio_unitario_centavos, descuento_linea_centavos, total_linea_centavos, creado_en)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
             rusqlite::params![
-                nuevo_id(), id, l.producto_id, l.descripcion.trim(), l.cantidad,
+                linea_id, id, l.producto_id, l.descripcion.trim(), l.cantidad,
                 l.precio_unitario_centavos, desc_linea, total_linea, ts,
             ],
         )
         .map_err(|e| format!("error al agregar línea: {e}"))?;
+
+        let payload_linea = json!({
+            "id": linea_id, "cotizacion_id": id, "producto_id": l.producto_id,
+            "descripcion": l.descripcion.trim(), "cantidad": l.cantidad,
+            "precio_unitario_centavos": l.precio_unitario_centavos,
+            "descuento_linea_centavos": desc_linea, "total_linea_centavos": total_linea,
+            "creado_en": ts,
+        });
+        encolar_sync(con, "cotizacion_lineas", &linea_id, "insert", &payload_linea)
+            .map_err(|e| format!("error al encolar línea: {e}"))?;
     }
 
     obtener(con, &id)?.ok_or_else(|| "No se pudo leer la cotización recién creada.".into())
@@ -258,6 +282,9 @@ pub fn cancelar(con: &Connection, id: &str) -> Result<(), String> {
     if n == 0 {
         return Err("Solo se pueden cancelar cotizaciones abiertas.".into());
     }
+    let payload = json!({ "id": id, "estado": "cancelada", "actualizado_en": ts });
+    encolar_sync(con, "cotizaciones", id, "update", &payload)
+        .map_err(|e| format!("error al encolar cancelación: {e}"))?;
     Ok(())
 }
 
@@ -272,6 +299,9 @@ pub fn eliminar(con: &Connection, id: &str) -> Result<(), String> {
     if n == 0 {
         return Err("No se encontró la cotización.".into());
     }
+    let payload = json!({ "id": id, "eliminado": 1, "actualizado_en": ts });
+    encolar_sync(con, "cotizaciones", id, "update", &payload)
+        .map_err(|e| format!("error al encolar eliminación: {e}"))?;
     Ok(())
 }
 
@@ -319,5 +349,10 @@ pub fn marcar_convertida(con: &Connection, id: &str, venta_id: &str) -> Result<(
     if n == 0 {
         return Err("La cotización ya no estaba abierta (¿otra caja la convirtió primero?).".into());
     }
+    let payload = json!({
+        "id": id, "estado": "convertida", "venta_id": venta_id, "actualizado_en": ts,
+    });
+    encolar_sync(con, "cotizaciones", id, "update", &payload)
+        .map_err(|e| format!("error al encolar conversión: {e}"))?;
     Ok(())
 }

@@ -7,6 +7,14 @@ use crate::db::onboarding::{ejecutar_onboarding, ya_configurado, PayloadOnboardi
 use crate::db::usuarios::{listar_usuarios as db_listar_usuarios, login as db_login, UsuarioPublico};
 use crate::db::EstadoDb;
 use crate::db::inicio::{self as db_inicio, RangosInicio, ResumenInicio};
+use super::db::despensa::{self, EditarIngrediente, NuevoIngrediente, Ingrediente};
+use super::db::recetas::{self, NuevaReceta, Receta, RecetaResumen};
+
+#[tauri::command]
+pub fn desp_buscar_nutricion(nombre: String) -> Result<Vec<CandidatoNutricion>, String> {
+    fotos_externas::buscar_nutricion_por_nombre(&nombre)
+}
+
 
 /// ¿El POS ya fue configurado? El frontend lo llama al arrancar para decidir
 /// entre mostrar el asistente de bienvenida o ir al login.
@@ -34,14 +42,82 @@ pub fn listar_usuarios(estado: tauri::State<EstadoDb>) -> Result<Vec<UsuarioPubl
 }
 
 /// Login por usuario + PIN. Devuelve el usuario público si coincide.
+/// Guarda la sesión REAL en el estado de Tauri (no algo que el frontend
+/// pueda inventar) — de aquí en adelante, los comandos sensibles verifican
+/// el rol leyendo esta sesión, nunca un parámetro que mande el frontend.
+///
+/// Bloqueo por intentos fallidos: 5 PIN incorrectos seguidos para el MISMO
+/// usuario bloquean ese usuario 5 minutos. Antes de esto, no había ningún
+/// límite — con un PIN de 4-6 dígitos, alguien con la app abierta podía
+/// probar combinaciones sin que nada lo frenara.
 #[tauri::command]
 pub fn login(
     estado: tauri::State<EstadoDb>,
     usuario_id: String,
     pin: String,
 ) -> Result<UsuarioPublico, String> {
+    const MAX_INTENTOS: u32 = 5;
+    const BLOQUEO: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+
+    // ¿Está bloqueado ahora mismo? Se revisa ANTES de tocar la base — ni
+    // siquiera vale la pena verificar el PIN si ya está bloqueado.
+    {
+        let intentos = estado.intentos_login.lock().map_err(|e| e.to_string())?;
+        if let Some(info) = intentos.get(&usuario_id) {
+            if let Some(hasta) = info.bloqueado_hasta {
+                let ahora = std::time::Instant::now();
+                if ahora < hasta {
+                    let restante = (hasta - ahora).as_secs() / 60 + 1;
+                    return Err(format!(
+                        "Demasiados intentos fallidos. Espera {restante} minuto(s) e intenta de nuevo."
+                    ));
+                }
+            }
+        }
+    }
+
     let con = estado.con.lock().map_err(|e| e.to_string())?;
-    db_login(&con, &usuario_id, &pin)
+    let resultado = db_login(&con, &usuario_id, &pin);
+    drop(con);
+
+    {
+        let mut intentos = estado.intentos_login.lock().map_err(|e| e.to_string())?;
+        match &resultado {
+            Ok(_) => {
+                // Login correcto: se olvida cualquier intento fallido previo.
+                intentos.remove(&usuario_id);
+            }
+            Err(_) => {
+                let entrada = intentos.entry(usuario_id.clone()).or_default();
+                entrada.fallidos += 1;
+                if entrada.fallidos >= MAX_INTENTOS {
+                    entrada.bloqueado_hasta = Some(std::time::Instant::now() + BLOQUEO);
+                    entrada.fallidos = 0; // cuenta fresca para la siguiente ventana
+                }
+            }
+        }
+    }
+
+    let usuario = resultado?;
+
+    let mut sesion = estado.sesion.lock().map_err(|e| e.to_string())?;
+    *sesion = Some(crate::db::SesionActiva {
+        usuario_id: usuario.id.clone(),
+        nombre: usuario.nombre.clone(),
+        rol: usuario.rol.clone(),
+    });
+
+    Ok(usuario)
+}
+
+/// Cierra la sesión activa. El frontend lo llama al volver a la pantalla de
+/// login (botón "Salir", o tras cerrar caja) — mientras no haya sesión, los
+/// comandos que exigen un rol específico fallan con "No hay sesión activa".
+#[tauri::command]
+pub fn sesion_cerrar(estado: tauri::State<EstadoDb>) -> Result<(), String> {
+    let mut sesion = estado.sesion.lock().map_err(|e| e.to_string())?;
+    *sesion = None;
+    Ok(())
 }
 
 /// Diagnóstico del cimiento (lo dejamos para verificar la BD).
@@ -73,6 +149,7 @@ use crate::db::categorias::{
 use crate::db::productos::{
     self, AjusteStock, EditarProducto, NuevoProducto, Producto,
 };
+use crate::db::bitacora::{self, FiltroMovimientos, MovimientoUnificado};
 
 /// Lee el dispositivo_id guardado en config durante el onboarding.
 fn dispositivo_id(con: &rusqlite::Connection) -> Result<String, String> {
@@ -82,6 +159,36 @@ fn dispositivo_id(con: &rusqlite::Connection) -> Result<String, String> {
         |r| r.get::<_, String>(0),
     )
     .map_err(|_| "No se encontró el dispositivo. ¿El POS está configurado?".to_string())
+}
+
+/// Rol de la sesión REALMENTE activa (verificada con PIN en `login`), nunca
+/// un string que mande el frontend en cada llamada. Cualquier comando que
+/// necesite saber "¿quién soy?" debe usar esto, no un parámetro `rol: String`.
+fn rol_sesion(estado: &tauri::State<EstadoDb>) -> Result<String, String> {
+    let sesion = estado.sesion.lock().map_err(|e| e.to_string())?;
+    sesion
+        .as_ref()
+        .map(|s| s.rol.clone())
+        .ok_or_else(|| "No hay una sesión activa.".to_string())
+}/// Exige que la sesión activa tenga uno de los roles dados. Atajo para no
+/// repetir el `if rol_sesion(...) != ... { return Err(...) }` en cada comando.
+fn exigir_rol(estado: &tauri::State<EstadoDb>, permitidos: &[&str]) -> Result<(), String> {
+    let rol = rol_sesion(estado)?;
+    if !permitidos.contains(&rol.as_str()) {
+        return Err("No tienes permiso para hacer esto.".into());
+    }
+    Ok(())
+}
+
+/// Id del usuario de la sesión REALMENTE activa — mismo criterio que
+/// `rol_sesion`. Se usa para dejar rastro de "quién hizo esto" en la
+/// bitácora, sin confiar en un id que mande el frontend.
+fn usuario_sesion(estado: &tauri::State<EstadoDb>) -> Result<String, String> {
+    let sesion = estado.sesion.lock().map_err(|e| e.to_string())?;
+    sesion
+        .as_ref()
+        .map(|s| s.usuario_id.clone())
+        .ok_or_else(|| "No hay una sesión activa.".to_string())
 }
 
 // ---- Categorías ----
@@ -120,11 +227,11 @@ pub fn cat_reordenar(estado: tauri::State<EstadoDb>, ids: Vec<String>) -> Result
 #[tauri::command]
 pub fn prod_listar(
     estado: tauri::State<EstadoDb>,
-    rol: String,
     filtro: Option<String>,
     solo_stock_bajo: Option<bool>,
     solo_negativos: Option<bool>,
 ) -> Result<Vec<Producto>, String> {
+    let rol = rol_sesion(&estado)?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     productos::listar(
         &con,
@@ -144,30 +251,35 @@ pub fn prod_contar_negativos(estado: tauri::State<EstadoDb>) -> Result<i64, Stri
 #[tauri::command]
 pub fn prod_por_codigo(
     estado: tauri::State<EstadoDb>,
-    rol: String,
     codigo: String,
 ) -> Result<Option<Producto>, String> {
+    let rol = rol_sesion(&estado)?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     productos::por_codigo(&con, &rol, &codigo)
 }
 
 #[tauri::command]
 pub fn prod_crear(estado: tauri::State<EstadoDb>, datos: NuevoProducto) -> Result<String, String> {
+    let usuario = usuario_sesion(&estado)?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     let disp = dispositivo_id(&con)?;
-    productos::crear(&con, &disp, &datos)
+    productos::crear(&con, &disp, &usuario, &datos)
 }
 
 #[tauri::command]
 pub fn prod_editar(estado: tauri::State<EstadoDb>, datos: EditarProducto) -> Result<(), String> {
+    let usuario = usuario_sesion(&estado)?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
-    productos::editar(&con, &datos)
+    let disp = dispositivo_id(&con)?;
+    productos::editar(&con, &usuario, &disp, &datos)
 }
 
 #[tauri::command]
 pub fn prod_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let usuario = usuario_sesion(&estado)?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
-    productos::eliminar(&con, &id)
+    let disp = dispositivo_id(&con)?;
+    productos::eliminar(&con, &usuario, &disp, &id)
 }
 
 /// Elimina varios productos a la vez (selección múltiple). Devuelve cuántos.
@@ -176,13 +288,28 @@ pub fn prod_eliminar_varios(
     estado: tauri::State<EstadoDb>,
     ids: Vec<String>,
 ) -> Result<i64, String> {
+    let usuario = usuario_sesion(&estado)?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
     let mut n = 0;
     for id in &ids {
-        productos::eliminar(&con, id)?;
+        productos::eliminar(&con, &usuario, &disp, id)?;
         n += 1;
     }
     Ok(n)
+}
+
+/// Registro de movimientos: une ventas + ajustes de inventario + altas/bajas
+/// de catálogo en una sola línea de tiempo. Solo dueño/gerente — es la misma
+/// clase de información sensible que un reporte de ganancias.
+#[tauri::command]
+pub fn bitacora_listar(
+    estado: tauri::State<EstadoDb>,
+    filtro: FiltroMovimientos,
+) -> Result<Vec<MovimientoUnificado>, String> {
+    exigir_rol(&estado, &["dueno", "gerente"])?;
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    bitacora::listar(&con, &filtro)
 }
 
 #[tauri::command]
@@ -277,6 +404,7 @@ pub fn cliente_editar(estado: tauri::State<EstadoDb>, datos: EditarCliente) -> R
 
 #[tauri::command]
 pub fn cliente_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     clientes::eliminar(&con, &id)
 }
@@ -348,9 +476,9 @@ use crate::db::devoluciones::{self, DevolucionConfirmada, DevolucionEntrada, Ven
 #[tauri::command]
 pub fn ventas_del_dia(
     estado: tauri::State<EstadoDb>,
-    rol: String,
     caja_sesion_id: String,
 ) -> Result<Vec<VentaResumen>, String> {
+    let rol = rol_sesion(&estado)?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     let disp = dispositivo_id(&con)?;
     let solo = if rol == "cajero" { Some(caja_sesion_id.as_str()) } else { None };
@@ -365,9 +493,9 @@ pub fn devolucion_buscar_venta(
     estado: tauri::State<EstadoDb>,
     folio: Option<i64>,
     venta_id: Option<String>,
-    rol: String,
     caja_sesion_id: String,
 ) -> Result<Option<VentaDetalle>, String> {
+    let rol = rol_sesion(&estado)?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     let venta = devoluciones::buscar_venta(&con, folio, venta_id.as_deref())?;
     // Permiso: el cajero solo puede tocar ventas de SU sesión actual.
@@ -398,14 +526,11 @@ use crate::db::reportes::{self, ReporteCompleto};
 #[tauri::command]
 pub fn reporte_generar(
     estado: tauri::State<EstadoDb>,
-    rol: String,
     inicio: String,
     fin: String,
 ) -> Result<ReporteCompleto, String> {
     // Permiso: reportes con ganancias son solo para dueño/gerente.
-    if rol != "dueno" && rol != "gerente" {
-        return Err("No tienes permiso para ver reportes.".into());
-    }
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     // Negocio completo: las ventas bajadas de otras cajas también cuentan.
     reportes::generar(&con, &inicio, &fin)
@@ -428,11 +553,8 @@ pub fn config_leer_todo(estado: tauri::State<EstadoDb>) -> Result<HashMap<String
 pub fn config_guardar_claves(
     estado: tauri::State<EstadoDb>,
     claves: HashMap<String, String>,
-    rol: String,
 ) -> Result<(), String> {
-    if rol != "dueno" && rol != "gerente" {
-        return Err("No tienes permiso para cambiar la configuración.".into());
-    }
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     config::guardar_claves(&con, &claves)
 }
@@ -447,12 +569,9 @@ pub fn config_leer(estado: tauri::State<EstadoDb>) -> Result<Configuracion, Stri
 pub fn config_guardar(
     estado: tauri::State<EstadoDb>,
     datos: ConfiguracionEntrada,
-    rol: String,
 ) -> Result<(), String> {
     // Solo dueño/gerente pueden cambiar la configuración del negocio.
-    if rol != "dueno" && rol != "gerente" {
-        return Err("No tienes permiso para cambiar la configuración.".into());
-    }
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     config::guardar(&con, &datos)
 }
@@ -467,11 +586,8 @@ use crate::db::usuarios::{self, EditarUsuario, NuevoUsuario};
 pub fn usuario_crear(
     estado: tauri::State<EstadoDb>,
     datos: NuevoUsuario,
-    rol: String,
 ) -> Result<UsuarioPublico, String> {
-    if rol != "dueno" && rol != "gerente" {
-        return Err("No tienes permiso para gestionar usuarios.".into());
-    }
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     let disp = dispositivo_id(&con)?;
     usuarios::crear_usuario(&con, &disp, &datos)
@@ -481,11 +597,8 @@ pub fn usuario_crear(
 pub fn usuario_editar(
     estado: tauri::State<EstadoDb>,
     datos: EditarUsuario,
-    rol: String,
 ) -> Result<(), String> {
-    if rol != "dueno" && rol != "gerente" {
-        return Err("No tienes permiso para gestionar usuarios.".into());
-    }
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     usuarios::editar_usuario(&con, &datos)
 }
@@ -494,11 +607,8 @@ pub fn usuario_editar(
 pub fn usuario_eliminar(
     estado: tauri::State<EstadoDb>,
     id: String,
-    rol: String,
 ) -> Result<(), String> {
-    if rol != "dueno" && rol != "gerente" {
-        return Err("No tienes permiso para gestionar usuarios.".into());
-    }
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     usuarios::eliminar_usuario(&con, &id)
 }
@@ -635,11 +745,8 @@ pub fn importar_ejecutar(
     estado: tauri::State<EstadoDb>,
     json: String,
     opciones: OpcionesImport,
-    rol: String,
 ) -> Result<ResumenImport, String> {
-    if rol != "dueno" {
-        return Err("Solo el dueño puede importar datos.".into());
-    }
+    exigir_rol(&estado, &["dueno"])?;
     let export: ExportEleventa =
         serde_json::from_str(&json).map_err(|e| format!("JSON inválido: {e}"))?;
     let mut con = estado.con.lock().map_err(|e| e.to_string())?;
@@ -666,11 +773,8 @@ pub fn fdb_importar(
     estado: tauri::State<EstadoDb>,
     ruta: String,
     opciones: OpcionesImport,
-    rol: String,
 ) -> Result<ResumenImport, String> {
-    if rol != "dueno" {
-        return Err("Solo el dueño puede importar datos.".into());
-    }
+    exigir_rol(&estado, &["dueno"])?;
     // Lee el FDB (con o sin ventas según la opción) y reutiliza el importador.
     let export = firebird::leer(&ruta, opciones.importar_ventas)?;
     let mut con = estado.con.lock().map_err(|e| e.to_string())?;
@@ -687,8 +791,8 @@ use crate::db::inventario::{self, ReporteInventario};
 #[tauri::command]
 pub fn inventario_reporte(
     estado: tauri::State<EstadoDb>,
-    rol: String,
 ) -> Result<ReporteInventario, String> {
+    let rol = rol_sesion(&estado)?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     let disp = dispositivo_id(&con)?;
     inventario::generar(&con, &disp, &rol)
@@ -729,9 +833,9 @@ use crate::db::exportar;
 pub fn exportar_csv(
     estado: tauri::State<EstadoDb>,
     tipo: String,
-    rol: String,
 ) -> Result<String, String> {
     // Inventario y ventas con costos: solo dueño/gerente.
+    let rol = rol_sesion(&estado)?;
     if (tipo == "inventario" || tipo == "productos") && rol == "cajero" {
         return Err("No tienes permiso para exportar esta información.".into());
     }
@@ -763,11 +867,8 @@ pub fn csv_importar_productos(
     estado: tauri::State<EstadoDb>,
     contenido: String,
     mapeo: MapeoCsv,
-    rol: String,
 ) -> Result<ResumenCsv, String> {
-    if rol != "dueno" {
-        return Err("Solo el dueño puede importar productos.".into());
-    }
+    exigir_rol(&estado, &["dueno"])?;
     let mut con = estado.con.lock().map_err(|e| e.to_string())?;
     let disp = dispositivo_id(&con)?;
     importar_csv::importar_productos(&mut con, &disp, &contenido, &mapeo)
@@ -784,11 +885,8 @@ pub fn csv_importar_productos(
 pub fn respaldo_completo(
     estado: tauri::State<EstadoDb>,
     ruta_destino: String,
-    rol: String,
 ) -> Result<(), String> {
-    if rol != "dueno" {
-        return Err("Solo el dueño puede exportar la base de datos completa.".into());
-    }
+    exigir_rol(&estado, &["dueno"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     // VACUUM INTO requiere que el archivo destino no exista.
     if std::path::Path::new(&ruta_destino).exists() {
@@ -825,11 +923,8 @@ pub fn restaurar_ejecutar(
     app: tauri::AppHandle,
     estado: tauri::State<EstadoDb>,
     ruta_respaldo: String,
-    rol: String,
 ) -> Result<String, String> {
-    if rol != "dueno" {
-        return Err("Solo el dueño puede restaurar la base de datos.".into());
-    }
+    exigir_rol(&estado, &["dueno"])?;
     // 1. Validar el archivo ANTES de tocar nada.
     restaurar::validar(&ruta_respaldo)?;
 
@@ -944,9 +1039,9 @@ pub fn kit_disponibles(
 #[tauri::command]
 pub fn inicio_resumen(
     estado: tauri::State<EstadoDb>,
-    rol: String,
     rangos: RangosInicio,
 ) -> Result<ResumenInicio, String> {
+    let rol = rol_sesion(&estado)?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     let incluir_costos = rol == "dueno" || rol == "gerente";
     db_inicio::resumen(&con, incluir_costos, &rangos)
@@ -1229,11 +1324,8 @@ pub fn tienda_config_local(
 pub fn tienda_guardar_config_local(
     estado: tauri::State<EstadoDb>,
     claves: HashMap<String, String>,
-    rol: String,
 ) -> Result<(), String> {
-    if rol != "dueno" && rol != "gerente" {
-        return Err("No tienes permiso para cambiar la configuración de la tienda.".into());
-    }
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     db_tienda::guardar_config_local(&con, &claves)
 }
@@ -1268,11 +1360,8 @@ pub fn lealtad_reglas(estado: tauri::State<EstadoDb>) -> Result<ReglasLealtad, S
 pub fn lealtad_guardar_reglas(
     estado: tauri::State<EstadoDb>,
     reglas: ReglasLealtad,
-    rol: String,
 ) -> Result<(), String> {
-    if rol != "dueno" && rol != "gerente" {
-        return Err("No tienes permiso para cambiar las reglas de lealtad.".into());
-    }
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     db_lealtad::guardar_reglas(&con, &reglas)
 }
@@ -1317,11 +1406,8 @@ pub fn lealtad_ajustar_puntos(
     cliente_id: String,
     puntos: i64,
     nota: String,
-    rol: String,
 ) -> Result<i64, String> {
-    if rol != "dueno" {
-        return Err("Solo el dueño puede ajustar puntos manualmente.".into());
-    }
+    exigir_rol(&estado, &["dueno"])?;
     let mut con = estado.con.lock().map_err(|e| e.to_string())?;
     let disp = dispositivo_id(&con)?;
     db_lealtad::ajustar_puntos(&mut con, &disp, &cliente_id, puntos, &nota)
@@ -1399,6 +1485,7 @@ pub fn prov_editar(
 
 #[tauri::command]
 pub fn prov_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     db_proveedores::eliminar(&con, &id)
 }
@@ -1566,6 +1653,7 @@ pub fn fin_movimientos(
 
 #[tauri::command]
 pub fn fin_gasto_registrar(estado: tauri::State<EstadoDb>, datos: DatosGasto) -> Result<String, String> {
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     let disp = dispositivo_id(&con)?;
     finanzas::registrar_gasto(&con, &disp, &datos)
@@ -1573,12 +1661,14 @@ pub fn fin_gasto_registrar(estado: tauri::State<EstadoDb>, datos: DatosGasto) ->
 
 #[tauri::command]
 pub fn fin_gasto_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     finanzas::eliminar_gasto(&con, &id)
 }
 
 #[tauri::command]
 pub fn fin_ingreso_registrar(estado: tauri::State<EstadoDb>, datos: DatosIngreso) -> Result<String, String> {
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     let disp = dispositivo_id(&con)?;
     finanzas::registrar_ingreso(&con, &disp, &datos)
@@ -1586,6 +1676,7 @@ pub fn fin_ingreso_registrar(estado: tauri::State<EstadoDb>, datos: DatosIngreso
 
 #[tauri::command]
 pub fn fin_ingreso_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     finanzas::eliminar_ingreso(&con, &id)
 }
@@ -1602,6 +1693,7 @@ pub fn fin_fijos_listar(
 
 #[tauri::command]
 pub fn fin_fijo_crear(estado: tauri::State<EstadoDb>, datos: DatosGastoFijo) -> Result<String, String> {
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     let disp = dispositivo_id(&con)?;
     finanzas::crear_fijo(&con, &disp, &datos)
@@ -1609,6 +1701,7 @@ pub fn fin_fijo_crear(estado: tauri::State<EstadoDb>, datos: DatosGastoFijo) -> 
 
 #[tauri::command]
 pub fn fin_fijo_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     finanzas::eliminar_fijo(&con, &id)
 }
@@ -1618,6 +1711,7 @@ pub fn fin_presupuesto_guardar(
     estado: tauri::State<EstadoDb>,
     datos: DatosPresupuesto,
 ) -> Result<(), String> {
+    exigir_rol(&estado, &["dueno", "gerente"])?;
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     let disp = dispositivo_id(&con)?;
     finanzas::guardar_presupuesto(&con, &disp, &datos)
@@ -1658,7 +1752,7 @@ pub fn etq_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), St
 // Fotos de producto: catálogo abierto y quitar fondo
 // ============================================================================
 
-use crate::db::fotos_externas::{self, FotoCatalogo};
+use crate::db::fotos_externas::{self, FotoCatalogo, CandidatoNutricion};
 
 /// Busca la foto de un producto conocido por su código de barras.
 /// `Ok(None)` es el caso normal (código artesanal, sin ficha) — no es error.
@@ -1689,3 +1783,75 @@ pub fn prod_quitar_fondo(
     let con = estado.con.lock().map_err(|e| e.to_string())?;
     fotos_externas::quitar_fondo(&app, &con, &ruta_local)
 }
+
+// ----------------------------------------------------------------------------
+// Despensa
+// ----------------------------------------------------------------------------
+ 
+#[tauri::command]
+pub fn desp_listar(estado: tauri::State<EstadoDb>) -> Result<Vec<Ingrediente>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    despensa::listar(&con)
+}
+ 
+#[tauri::command]
+pub fn desp_crear(estado: tauri::State<EstadoDb>, datos: NuevoIngrediente) -> Result<String, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    despensa::crear(&con, &disp, &datos)
+}
+ 
+#[tauri::command]
+pub fn desp_editar(estado: tauri::State<EstadoDb>, datos: EditarIngrediente) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    despensa::editar(&con, &datos)
+}
+ 
+#[tauri::command]
+pub fn desp_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    despensa::eliminar(&con, &id)
+}
+ 
+// ----------------------------------------------------------------------------
+// Recetas
+// ----------------------------------------------------------------------------
+ 
+#[tauri::command]
+pub fn receta_listar(estado: tauri::State<EstadoDb>) -> Result<Vec<RecetaResumen>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    recetas::listar_resumen(&con)
+}
+ 
+#[tauri::command]
+pub fn receta_obtener(estado: tauri::State<EstadoDb>, id: String) -> Result<Option<Receta>, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    recetas::obtener(&con, &id)
+}
+ 
+#[tauri::command]
+pub fn receta_guardar(estado: tauri::State<EstadoDb>, datos: NuevaReceta) -> Result<String, String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    recetas::guardar(&con, &disp, &datos)
+}
+ 
+#[tauri::command]
+pub fn receta_eliminar(estado: tauri::State<EstadoDb>, id: String) -> Result<(), String> {
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    recetas::eliminar(&con, &id)
+}
+ 
+#[tauri::command]
+pub fn receta_crear_producto(
+    estado: tauri::State<EstadoDb>,
+    receta_id: String,
+    precio_venta_centavos: Option<i64>,
+    categoria_id: Option<String>,
+) -> Result<String, String> {
+    let usuario = usuario_sesion(&estado)?;
+    let con = estado.con.lock().map_err(|e| e.to_string())?;
+    let disp = dispositivo_id(&con)?;
+    recetas::crear_producto_desde_receta(&con, &disp, &usuario, &receta_id, precio_venta_centavos, categoria_id)
+}
+ 

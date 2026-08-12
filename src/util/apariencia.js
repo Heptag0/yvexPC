@@ -162,3 +162,104 @@ function contraste(a, b) {
   const [l1, l2] = [luminancia(a), luminancia(b)].sort((x, y) => y - x);
   return (l1 + 0.05) / (l2 + 0.05);
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// PALETA DINÁMICA PARA GRÁFICOS
+// ─────────────────────────────────────────────────────────────────────────
+// Antes los gráficos de Reportes usaban colores fijos (verde lima, azul
+// eléctrico, morado). Se veían bien en un tema claro pero como neón chillón
+// en Nocturno — y de plano no combinaban si el dueño elegía otro acento.
+//
+// La idea: los colores del gráfico se DERIVAN del acento que ya eligió el
+// dueño (rotando el matiz para conseguir variantes fría/cálida), y la
+// opacidad se ajusta según si el tema es claro u oscuro — sobre fondo negro,
+// un color muy saturado se ve "de juguete"; apagado al 60% se ve elegante,
+// como luz LED. Sobre fondo claro pasa lo contrario: hay que casi-saturar
+// (90%) para que no se vea lavado.
+//
+// Uso típico (en cualquier vista que arme un gráfico):
+//   import { paletaGrafico, colorAcentoActual } from "../util/apariencia.js";
+//   const colores = paletaGrafico(5, colorAcentoActual(), temaActualEsClaro());
+
+/** Lee el acento REALMENTE aplicado ahora mismo (resuelve toda la cascada:
+ *  sirve igual si viene de un override inline o del bloque del tema). */
+export function colorAcentoActual() {
+  const v = getComputedStyle(document.documentElement).getPropertyValue("--acento").trim();
+  return v || "#8b5cf6";
+}
+
+/** ¿El tema activo ahora mismo es claro? Lee el atributo que aplicarApariencia
+ *  ya puso en <html>, así no hay que repetir la config en cada vista. */
+export function temaActualEsClaro() {
+  return temaEsClaro(document.documentElement.dataset.tema);
+}
+
+/**
+ * Genera `n` colores derivados del acento, rotando el matiz (más frío hacia
+ * un lado, más cálido hacia el otro) y con la opacidad correcta para el
+ * tema activo. Pensado para gráficos (dona, barras): cada color se
+ * distingue del resto, pero todos se sienten "de la misma familia" que el
+ * acento del dueño.
+ * @param {number} n cuántos colores hacen falta
+ * @param {string} [acentoHex] si no se da, se lee el acento actual
+ * @param {boolean} [esClaro] si no se da, se lee el tema actual
+ */
+export function paletaGrafico(n, acentoHex, esClaro) {
+  const hex = acentoHex || colorAcentoActual();
+  const claro = esClaro !== undefined ? esClaro : temaActualEsClaro();
+  const alfa = claro ? 0.9 : 0.6;
+  const [h, s, l] = hexAHsl(hex);
+  // Rotaciones alrededor del acento: 0 = el acento tal cual, luego se abre
+  // hacia azulado (frío) y hacia amarillo (cálido), alternando.
+  const ROTACIONES = [0, -35, 35, -70, 70, -110, 110];
+  const colores = [];
+  for (let i = 0; i < n; i++) {
+    const rot = ROTACIONES[i % ROTACIONES.length];
+    const hh = ((h + rot) % 360 + 360) % 360;
+    // Un poco más de saturación en las rotaciones (si no, se ven lavadas al
+    // alejarse del matiz original) y misma luminosidad que el acento base.
+    const ss = i === 0 ? s : Math.min(88, s + 8);
+    const [r, g, b] = hslARgb(hh, ss, l);
+    colores.push(`rgba(${r},${g},${b},${alfa})`);
+  }
+  return colores;
+}
+
+// --- conversión de color (sin dependencias externas) ---
+function hexAHsl(hex) {
+  const n = parseInt(hex.replace("#", ""), 16);
+  let r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d !== 0) {
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      default: h = (r - g) / d + 4;
+    }
+    h *= 60;
+  }
+  return [h, s * 100, l * 100];
+}
+function hslARgb(h, s, l) {
+  h /= 360; s /= 100; l /= 100;
+  if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return [
+    Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
+    Math.round(hue2rgb(p, q, h) * 255),
+    Math.round(hue2rgb(p, q, h - 1 / 3) * 255),
+  ];
+}

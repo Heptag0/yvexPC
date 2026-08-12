@@ -10,6 +10,72 @@ use db::EstadoDb;
 use std::sync::Mutex;
 use tauri::Manager;
 
+/// Pone la ventana a cubrir el monitor completo, o la devuelve a maximizada.
+///
+/// POR QUÉ ASÍ Y NO CON setFullscreen():
+/// Se intentó cinco veces desde el frontend con `setFullscreen(true)` y
+/// siempre quedaba una franja negra abajo, del alto exacto de la barra de
+/// tareas: la VENTANA crecía, pero el lienzo de WebView2 se quedaba con el
+/// tamaño del área de trabajo y nunca se enteraba. Intentar despertarlo con
+/// setSize() empeoraba todo, porque Windows no deja redimensionar una
+/// ventana en fullscreen y la degradaba a ventana flotante.
+///
+/// Como esta ventana ya es `decorations: false`, no hace falta el modo
+/// fullscreen del sistema: basta con dimensionarla EXACTAMENTE al monitor y
+/// posicionarla en su origen. Windows reconoce una ventana sin bordes que
+/// cubre el monitor completo y oculta la barra de tareas por su cuenta (es
+/// el "fullscreen sin bordes" de toda la vida). Y como para el sistema esto
+/// es un redimensionado corriente, el webview SÍ se redimensiona con él —
+/// que era justo lo que fallaba.
+///
+/// Vive en Rust y no en JS a propósito: aquí no hacen falta permisos de
+/// `core:window:*` en capabilities, y se puede aplicar en el arranque antes
+/// del primer pixel (para que el login ya salga bien).
+#[tauri::command]
+fn ventana_modo_completo(ventana: tauri::WebviewWindow, activar: bool) -> Result<(), String> {
+    if !activar {
+        ventana.set_fullscreen(false).map_err(|e| e.to_string())?;
+        ventana.maximize().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    cubrir_monitor(&ventana)
+}
+
+fn cubrir_monitor(ventana: &tauri::WebviewWindow) -> Result<(), String> {
+    let monitor = ventana
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or("no se pudo determinar el monitor actual")?;
+    let tam = *monitor.size();
+    let pos = *monitor.position();
+    // Salir de maximizado primero: una ventana maximizada ignora set_size,
+    // y se quedaría pegada al área de trabajo (pantalla menos barra de tareas).
+    if ventana.is_maximized().unwrap_or(false) {
+        ventana.unmaximize().map_err(|e| e.to_string())?;
+    }
+    ventana
+        .set_position(tauri::PhysicalPosition::new(pos.x, pos.y))
+        .map_err(|e| e.to_string())?;
+    ventana
+        .set_size(tauri::PhysicalSize::new(tam.width, tam.height))
+        .map_err(|e| e.to_string())?;
+
+    // Y AHORA sí, fullscreen real — en este orden y no al revés.
+    //
+    // Dimensionar la ventana al monitor NO oculta la barra de tareas: la
+    // barra de Windows es "siempre encima" y no cede solo porque algo la
+    // cubra. Hace falta el modo fullscreen del sistema.
+    //
+    // Pero pedirlo de entrada era justo lo que fallaba: la ventana crecía
+    // de golpe y el lienzo de WebView2 se quedaba con el tamaño viejo,
+    // dejando la franja negra. Haciéndolo DESPUÉS de dimensionar, la
+    // geometría ya es exactamente la del monitor, así que entrar a
+    // fullscreen no cambia ni un pixel — no hay redimensionado que WebView2
+    // pueda ignorar, y el bug no tiene por dónde aparecer.
+    ventana.set_fullscreen(true).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -17,6 +83,12 @@ pub fn run() {
         .plugin(tauri_plugin_thermal_printer::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
             // Carpeta de datos de la app (p. ej. %APPDATA%\com.yvexiq.pos en Windows).
             let dir = app
@@ -33,15 +105,28 @@ pub fn run() {
             app.manage(EstadoDb {
                 con: Mutex::new(con),
                 sync_tx: Mutex::new(Some(sync_tx)),
+                sesion: Mutex::new(None),
+                intentos_login: Mutex::new(std::collections::HashMap::new()),
             });
+
+            // Cubrir el monitor desde el primer pixel (el login incluido),
+            // sin esperar a que el frontend lo pida. Si algo falla, la app
+            // arranca normal: es un extra, no un requisito.
+            if let Some(v) = app.get_webview_window("main") {
+                if let Err(e) = cubrir_monitor(&v) {
+                    println!("[ventana] no se pudo cubrir el monitor: {e}");
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            ventana_modo_completo,
             commands::db_estado,
             commands::pos_configurado,
             commands::configurar_pos,
             commands::listar_usuarios,
             commands::login,
+            commands::sesion_cerrar,
             commands::cat_listar,
             commands::cat_crear,
             commands::cat_editar,
@@ -172,6 +257,17 @@ pub fn run() {
             commands::etq_obtener,
             commands::etq_guardar,
             commands::etq_eliminar,
+            commands::desp_listar,
+            commands::desp_crear,
+            commands::desp_editar,
+            commands::desp_eliminar,
+            commands::desp_buscar_nutricion,
+            commands::receta_listar,
+            commands::receta_obtener,
+            commands::receta_guardar,
+            commands::receta_eliminar,
+            commands::receta_crear_producto,
+            commands::bitacora_listar,
             commands::prod_buscar_foto_catalogo,
             commands::prod_descargar_foto_catalogo,
             commands::prod_recorte_disponible,

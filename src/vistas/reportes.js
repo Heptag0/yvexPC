@@ -4,15 +4,26 @@
 import { invoke } from "@tauri-apps/api/core";
 import { pesos, escapar } from "../util/formato.js";
 import { donaSVG, barrasSVG, lineaSVG } from "./graficos.js";
+import { icono } from "../util/iconos.js";
+import { paletaGrafico } from "../util/apariencia.js";
 
 const ETIQUETA_METODO = {
   efectivo: "Efectivo", tarjeta: "Tarjeta", transferencia: "Transferencia",
   credito: "Crédito", vale: "Vale",
 };
-const COLOR_METODO = {
-  efectivo: "#22c55e", tarjeta: "#3b82f6", transferencia: "#06b6d4",
-  credito: "#f59e0b", vale: "#a855f7",
-};
+// Antes eran 5 colores fijos (verde lima, azul eléctrico, morado…) — se
+// veían bien en un tema claro pero como neón chillón en Nocturno, y ni
+// siquiera combinaban con el acento que el dueño eligió. Ahora se calculan
+// en cada render(), derivados del acento actual (ver util/apariencia.js).
+// Mismo orden de siempre, así el color de "Efectivo" no le cambia al dueño
+// entre una recarga y otra.
+const METODOS_ORDEN = ["efectivo", "tarjeta", "transferencia", "credito", "vale"];
+function coloresMetodo() {
+  const colores = paletaGrafico(METODOS_ORDEN.length);
+  const mapa = {};
+  METODOS_ORDEN.forEach((m, i) => (mapa[m] = colores[i]));
+  return mapa;
+}
 
 export function montarReportes(contenedor, sesion, alSalir) {
   contenedor.innerHTML = "";
@@ -153,7 +164,7 @@ export function montarReportes(contenedor, sesion, alSalir) {
     if (m.num_ventas === 0) {
       cuerpo.innerHTML = `
         <div class="rep-vacio">
-          <div class="rep-vacio-ico">📊</div>
+          <div class="rep-vacio-ico">${icono("reportes")}</div>
           <b>No hubo ventas en este periodo.</b>
           <span>Prueba con otro rango de fechas.</span>
         </div>`;
@@ -196,10 +207,11 @@ export function montarReportes(contenedor, sesion, alSalir) {
     const fila1 = document.createElement("div");
     fila1.className = "rep-fila rep-fila--2";
     const panelMetodos = panel("Por forma de pago");
+    const colorMetodo = coloresMetodo();
     panelMetodos.cuerpo.appendChild(donaSVG(rep.por_metodo.map((p) => ({
       label: ETIQUETA_METODO[p.metodo] || p.metodo,
       valor: p.monto_centavos,
-      color: COLOR_METODO[p.metodo],
+      color: colorMetodo[p.metodo],
     })), { titulo: "ingresos" }));
     fila1.appendChild(panelMetodos.el);
     const panelCat = panel("Por departamento");

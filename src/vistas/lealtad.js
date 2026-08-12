@@ -154,7 +154,7 @@ export function montarLealtad(contenedor, sesion, volver) {
   function pintarDetalle(c, hist) {
     const contenidoQr = `YVEXPOS:${c.codigo}`;
     detalleEl.innerHTML = `
-      <div class="lea-card con-filo">
+      <div class="lea-card con-luz">
         <div class="lea-card-head">
           <div>
             <div class="lea-card-nombre">${escapar(c.nombre)}</div>

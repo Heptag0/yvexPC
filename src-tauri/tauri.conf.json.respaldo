@@ -1,0 +1,74 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "YvexPOS",
+  "version": "0.2.0",
+  "identifier": "com.yvexiq.pos",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "yvexiq-pos",
+        "width": 1280,
+        "height": 800,
+        "dragDropEnabled": false,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' asset: http://asset.localhost https://asset.localhost data:",
+        "connect-src": "ipc: http://ipc.localhost"
+      },
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/imagenes/**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      },
+      "nsis": {
+        "headerImage": "icons/nsis-header.bmp",
+        "sidebarImage": "icons/nsis-sidebar.bmp",
+        "languages": [
+          "SpanishInternational"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://pos.yvexiq.com/updater/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM4N0NBN0ZFQTU1Q0NCMzcKUldRM3kxeWwvcWQ4eUYyS2RQREZMUmltNG9tRkNQdThDb3hXUzc3R1JXTGIwSVd2dmczMVI1SmMK",
+      "windows": {
+        "installMode": "quiet"
+      }
+    }
+  }
+}

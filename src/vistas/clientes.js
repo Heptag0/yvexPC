@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { pesos, centavos, escapar } from "../util/formato.js";
 import { verEstadoCuenta } from "./cuenta.js";
 import { confirmar } from "../util/confirmar.js";
+import { abrirModal, cerrarModal } from "../util/modal.js";
 
 export function montarClientes(contenedor, sesion, cajaSesion, alSalir) {
   contenedor.innerHTML = "";
@@ -88,12 +89,23 @@ export function montarClientes(contenedor, sesion, cajaSesion, alSalir) {
       const conDeuda = clientes.filter((c) => c.saldo_centavos > 0);
       const stats = wrap.querySelector("#cli-stats");
       stats.hidden = false;
+      const porCobrar = conDeuda.reduce((s, c) => s + c.saldo_centavos, 0);
+      // Tres cifras, tres fichas. Antes era una línea de texto corrido donde
+      // "por cobrar" —el dato que de verdad importa— pesaba lo mismo que el
+      // conteo total.
       stats.innerHTML = `
-        <span><strong class="num">${clientes.length}</strong> cliente${clientes.length === 1 ? "" : "s"}</span>
-        <span class="cli-stats-sep">·</span>
-        <span><strong class="num">${conDeuda.length}</strong> con deuda</span>
-        <span class="cli-stats-sep">·</span>
-        <span><strong class="num">${pesos(conDeuda.reduce((s, c) => s + c.saldo_centavos, 0))}</strong> por cobrar</span>`;
+        <div class="cli-ficha">
+          <div class="cli-ficha-lbl">CLIENTES</div>
+          <div class="cli-ficha-val num">${clientes.length}</div>
+        </div>
+        <div class="cli-ficha">
+          <div class="cli-ficha-lbl">CON DEUDA</div>
+          <div class="cli-ficha-val num">${conDeuda.length}</div>
+        </div>
+        <div class="cli-ficha cli-ficha--dinero ${porCobrar > 0 ? "con-luz" : ""}">
+          <div class="cli-ficha-lbl">POR COBRAR</div>
+          <div class="cli-ficha-val num">${pesos(porCobrar)}</div>
+        </div>`;
     }
     tbody.innerHTML = clientes.map(fila).join("");
     tbody.querySelectorAll("[data-estado]").forEach((b) =>
@@ -156,7 +168,7 @@ export function montarClientes(contenedor, sesion, cajaSesion, alSalir) {
     const modal = abrirModal(html);
     const $ = (s) => modal.querySelector(s);
     setTimeout(() => $("#cm-nombre").focus(), 50);
-    $("#cm-cancelar").addEventListener("click", cerrarModal);
+    $("#cm-cancelar").addEventListener("click", () => cerrarModal());
 
     if (esEdicion && cli.saldo_centavos === 0) {
       $("#cm-eliminar").addEventListener("click", async () => {
@@ -201,25 +213,5 @@ export function montarClientes(contenedor, sesion, cajaSesion, alSalir) {
         err.textContent = String(e);
       }
     });
-  }
-}
-
-let modalCli = null;
-function abrirModal(html) {
-  if (modalCli) cerrarModal();
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
-  document.body.appendChild(overlay);
-  modalCli = overlay;
-  overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) cerrarModal();
-  });
-  return overlay.querySelector(".modal");
-}
-function cerrarModal() {
-  if (modalCli) {
-    modalCli.remove();
-    modalCli = null;
   }
 }

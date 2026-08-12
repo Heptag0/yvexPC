@@ -14,10 +14,13 @@ import { escapar } from "../util/formato.js";
 import { confirmar } from "../util/confirmar.js";
 import {
   calcularSellos, compararFases, faseVigente, reglasImpresion,
+  sugerenciasParaQuitarSellos,
   svgSello, svgSelloNumero, svgLeyenda,
   EXENCIONES, CHECKLIST_ETIQUETA, REGLAS_EXTRA, TRAMITES,
   FECHA_VERIFICACION, FUENTE_OFICIAL,
 } from "../util/sellos.js";
+import { CATEGORIAS_RECETA, sustitucionesPara } from "../util/sustituciones.js";
+import { abrirModal, cerrarModal } from "../util/modal.js";
 
 const VACIO = {
   id: "", producto_id: null, nombre: "", tipo: "solido",
@@ -26,6 +29,10 @@ const VACIO = {
   anade_azucares: false, anade_grasas: false, anade_sodio: false,
   contiene_cafeina: false, contiene_edulcorantes: false,
   exencion: "ninguna", area_cm2: 0,
+  // NO se guarda en la base todavía (necesitaría una columna nueva en el
+  // backend): se resetea a "otro" cada vez que se abre el editor. Solo se
+  // usa en la sesión, para las sugerencias de sustitución del panel Mejorar.
+  categoria_receta: "otro",
   denominacion: null, marca: null, ingredientes: null, alergenos: null,
   contenido_neto: null, porcion: null, porciones_envase: null,
   responsable_nombre: null, responsable_domicilio: null, lote: null,
@@ -132,25 +139,14 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
             r.leyendas.length ? ` · ${r.leyendas.length} leyenda${r.leyendas.length > 1 ? "s" : ""}` : ""
           }</span>
         </div>
+        ${p.producto_id ? `<span class="etq-fila-tag">Vinculada a producto</span>` : ""}
         <div class="etq-fila-mini">${r.sellos.map(() => '<span class="etq-oct-mini"></span>').join("")}</div>
       </button>`;
   }
 
-  // ─────────────────────────────────────────────────────── Modal genérico
-  let modalActivo = null;
-  function abrirModal(html, opciones) {
-    if (modalActivo) cerrarModal();
-    const ov = document.createElement("div");
-    ov.className = "modal-overlay modal-overlay--alto";
-    ov.innerHTML = `<div class="modal${opciones && opciones.ancho ? " modal--ancho" : ""}" role="dialog" aria-modal="true">${html}</div>`;
-    document.body.appendChild(ov);
-    modalActivo = ov;
-    ov.addEventListener("mousedown", (e) => { if (e.target === ov) cerrarModal(); });
-    return ov.querySelector(".modal");
-  }
-  function cerrarModal() {
-    if (modalActivo) { modalActivo.remove(); modalActivo = null; }
-  }
+  // La undécima copia del mismo modal local del programa. Aquí la opción se
+  // llamaba {ancho:true} → clase "modal--ancho"; util/modal.js usa {clase}
+  // directo, así que las 3 llamadas de abajo se ajustaron al mismo tiempo.
 
   // ─────────────────────────────────────────────────────── Editor
   function abrirEditor(perfil) {
@@ -167,6 +163,7 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
           <button class="etq-tab" data-tab="checklist">Checklist</button>
         </div>
       </div>
+      <div id="etq-notas-aviso"></div>
       <div id="etq-panel"></div>
       <p class="m-error" id="etq-error"></p>
       <div class="m-acciones">
@@ -177,7 +174,7 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
           <button class="btn-primario" id="etq-guardar">Guardar</button>
         </div>
       </div>
-    `, { ancho: true });
+    `, { clase: "modal--ancho" });
     const $ = (s) => modal.querySelector(s);
 
     modal.querySelectorAll(".etq-tab").forEach((b) =>
@@ -210,6 +207,7 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
         p.anade_sodio = chk("#e-anade-sodio");
         p.contiene_cafeina = chk("#e-cafeina");
         p.contiene_edulcorantes = chk("#e-edulcorantes");
+        if ($("#e-categoria")) p.categoria_receta = $("#e-categoria").value;
       } else if (pestana === "etiqueta") {
         p.denominacion = txt("#e-denominacion");
         p.marca = txt("#e-marca");
@@ -232,9 +230,15 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
     }
 
     function pintarPanel() {
+      const avisoNotas = $("#etq-notas-aviso");
+      if (avisoNotas) {
+        avisoNotas.innerHTML = p.notas ? `<div class="etq-aviso-notas">${escapar(p.notas)}</div>` : "";
+      }
       const panel = $("#etq-panel");
       panel.innerHTML = pestana === "calculo" ? panelCalculo()
-        : pestana === "etiqueta" ? panelEtiqueta() : panelChecklist();
+        : pestana === "etiqueta" ? panelEtiqueta()
+        : pestana === "mejorar" ? panelMejorar()
+        : panelChecklist();
       if (pestana === "calculo") {
         modal.querySelectorAll("#etq-panel input, #etq-panel select").forEach((el) =>
           el.addEventListener("input", () => { recoger(); pintarResultado(); })
@@ -242,7 +246,17 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
         modal.querySelectorAll("#etq-panel select").forEach((el) =>
           el.addEventListener("change", () => { recoger(); pintarPanel(); })
         );
+        const btnElegir = $("#e-elegir-producto");
+        if (btnElegir) btnElegir.addEventListener("click", abrirSelectorProducto);
         pintarResultado();
+      }
+      if (pestana === "mejorar") {
+        const volver = $("#etq-mejorar-volver");
+        if (volver) volver.addEventListener("click", () => {
+          pestana = "calculo";
+          modal.querySelectorAll(".etq-tab").forEach((x) => x.classList.toggle("etq-tab--on", x.dataset.tab === "calculo"));
+          pintarPanel();
+        });
       }
     }
 
@@ -253,6 +267,12 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
           <label class="m-col2">Nombre de la receta o producto
             <input id="e-nombre" value="${escapar(p.nombre || "")}" placeholder="Ej. Galletas de avena con miel" />
           </label>
+          ${!esEdicion && !p.producto_id ? `
+          <div class="m-col2 etq-elegir-prod">
+            <button type="button" class="btn-mini" id="e-elegir-producto">Elegir producto existente</button>
+            <span class="etq-elegir-prod-nota">Si ya tiene una receta en YvexPOS, se rellena la nutrición sola.</span>
+          </div>` : ""}
+          ${p.producto_id ? `<p class="etq-elegir-prod-nota m-col2">Vinculada al producto del catálogo — el nombre y la nutrición se pueden editar libremente aquí, es solo el punto de partida.</p>` : ""}
           <label>Tipo
             <select id="e-tipo">
               <option value="solido" ${p.tipo !== "liquido" ? "selected" : ""}>Sólido (por 100 g)</option>
@@ -291,6 +311,13 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
             <label><input type="checkbox" id="e-cafeina" ${p.contiene_cafeina ? "checked" : ""}/> Lleva cafeína añadida</label>
             <label><input type="checkbox" id="e-edulcorantes" ${p.contiene_edulcorantes ? "checked" : ""}/> Lleva edulcorantes</label>
           </div>
+
+          <label class="m-col2">¿Qué tipo de receta es?
+            <select id="e-categoria">
+              ${CATEGORIAS_RECETA.map((c) => `<option value="${c.id}" ${(p.categoria_receta || "otro") === c.id ? "selected" : ""}>${c.n}</option>`).join("")}
+            </select>
+            <span class="m-hint">Para que, si algún sello queda, las sugerencias de "¿Cómo le quito un sello?" sepan si el ingrediente que tocarías conserva tu producto o solo le da sabor.</span>
+          </label>
         `}
 
         <div id="etq-resultado" class="etq-resultado"></div>
@@ -364,6 +391,11 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
               </div>`).join("")}
           </div>` : ""}
 
+        ${r.sellos.length > 0 ? `
+          <div style="margin-top:16px">
+            <button class="btn-sec" id="etq-a-mejorar" type="button">¿Cómo le quito un sello?</button>
+          </div>` : ""}
+
         <div class="etq-impresion">
           <div class="etq-imp-titulo">Cómo va en tu envase</div>
           ${reglas.conocida ? `
@@ -385,6 +417,105 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
             ${comp.nuevos.map((s) => escapar(s.etiqueta)).join(", ")}.
           </div>` : ""}
       `;
+      const btnMejorar = cont.querySelector("#etq-a-mejorar");
+      if (btnMejorar) {
+        btnMejorar.addEventListener("click", () => {
+          pestana = "mejorar";
+          modal.querySelectorAll(".etq-tab").forEach((x) => x.classList.remove("etq-tab--on"));
+          pintarPanel();
+        });
+      }
+    }
+
+    // ------------------------------------- Elegir producto existente
+    async function abrirSelectorProducto() {
+      let productos;
+      try {
+        productos = await invoke("prod_listar", { filtro: null, soloStockBajo: false, soloNegativos: false });
+      } catch (e) {
+        alert("No se pudo cargar el catálogo: " + String(e));
+        return;
+      }
+      const html = `
+        <h2>Elegir producto</h2>
+        <input type="text" id="sel-prod-buscar" class="campo" placeholder="Buscar producto…" autocomplete="off" />
+        <div class="rct-selector-lista" id="sel-prod-lista">
+          ${productos.map((pr) => `
+            <button type="button" class="rct-selector-item" data-prod="${pr.id}" data-nombre="${escapar(pr.nombre)}">
+              <span>${escapar(pr.nombre)}</span>
+            </button>`).join("")}
+        </div>
+        <div class="m-acciones"><span></span><div>
+          <button class="btn-sec" id="sel-prod-cerrar">Cerrar</button>
+        </div></div>
+      `;
+      const selModal = abrirModal(html);
+      selModal.querySelector("#sel-prod-cerrar").addEventListener("click", () => cerrarModal(selModal));
+      const buscar = selModal.querySelector("#sel-prod-buscar");
+      buscar.addEventListener("input", () => {
+        const q = buscar.value.trim().toLowerCase();
+        selModal.querySelectorAll("[data-prod]").forEach((el) => {
+          el.style.display = el.dataset.nombre.toLowerCase().includes(q) ? "" : "none";
+        });
+      });
+      setTimeout(() => buscar.focus(), 50);
+      selModal.querySelectorAll("[data-prod]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          const pr = productos.find((x) => x.id === b.dataset.prod);
+          cerrarModal(selModal);
+          if (pr) await elegirProducto(pr);
+        })
+      );
+    }
+
+    async function elegirProducto(pr) {
+      // ¿Ya existe una etiqueta para este producto? No se duplica — se abre
+      // la que ya hay, para no terminar con dos perfiles del mismo producto.
+      const yaExiste = perfiles.find((x) => x.producto_id === pr.id);
+      if (yaExiste) {
+        cerrarModal(modal);
+        abrirEditor(yaExiste);
+        return;
+      }
+
+      p.producto_id = pr.id;
+      p.nombre = pr.nombre;
+
+      // ¿Tiene una receta vinculada en Recetas? Si sí, cargar su nutrición
+      // (ya calculada por 100 g) — si no, se queda como estaba, sin datos.
+      let recetas = [];
+      try {
+        recetas = await invoke("receta_listar");
+      } catch (e) {
+        recetas = [];
+      }
+      const resumen = recetas.find((r) => r.producto_id === pr.id);
+      if (resumen) {
+        let receta = null;
+        try {
+          receta = await invoke("receta_obtener", { id: resumen.id });
+        } catch (e) {
+          receta = null;
+        }
+        if (receta && receta.peso_aprox_g > 0) {
+          const factor = 100 / receta.peso_aprox_g;
+          const n = receta.nutricion_total;
+          p.calorias_kcal = n.calorias_kcal * factor;
+          p.azucares_g = n.azucares_g * factor;
+          p.grasas_saturadas_g = n.grasas_saturadas_g * factor;
+          p.grasas_trans_g = n.grasas_trans_g * factor;
+          p.sodio_mg = n.sodio_mg * factor;
+          p.proteinas_g = n.proteinas_g * factor;
+          p.carbohidratos_g = n.carbohidratos_g * factor;
+          p.grasas_totales_g = n.grasas_totales_g * factor;
+          p.fibra_g = n.fibra_g * factor;
+          p.notas = receta.ingredientes_sin_nutricion && receta.ingredientes_sin_nutricion.length
+            ? `Nutrición cargada desde la receta "${receta.nombre}" (por 100 g). Ingredientes sin datos nutricionales: ${receta.ingredientes_sin_nutricion.join(", ")}.`
+            : `Nutrición cargada desde la receta "${receta.nombre}" (por 100 g).`;
+        }
+      }
+
+      pintarPanel();
     }
 
     function panelEtiqueta() {
@@ -428,6 +559,57 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
           <label>Grasas totales (g)<input id="e-grasastot" inputmode="decimal" value="${p.grasas_totales_g || ""}" placeholder="0" /></label>
           <label>Fibra (g)<input id="e-fibra" inputmode="decimal" value="${p.fibra_g || ""}" placeholder="0" /></label>
         </div>
+      `;
+    }
+
+    function etiquetaNivel(nivel) {
+      return nivel === "segura" ? "SEGURA" : nivel === "no_recomendada" ? "NO SE ACONSEJA" : "CON AVISO";
+    }
+
+    function panelMejorar() {
+      const d = datosDe(p);
+      const { sugerencias } = sugerenciasParaQuitarSellos(d);
+      const categoria = p.categoria_receta || "otro";
+      const fmtN = (n, dec = 1) => (Number(n) || 0).toFixed(dec).replace(/\.0$/, "");
+      const NUTRIENTES = ["azucares", "grasas_sat", "grasas_trans", "sodio"];
+
+      return `
+        <button class="btn-mini etq-mejorar-volver" id="etq-mejorar-volver" type="button">← Volver a Sellos</button>
+        <p class="m-hint">
+          Estos son los números exactos para perder cada sello. Al bajar azúcar o grasa también
+          bajan las calorías, así que a veces un solo ajuste quita dos sellos — ya está contado.
+        </p>
+        ${sugerencias.length === 0 ? `<p class="m-hint">No hay sellos que mejorar con estos datos.</p>` : sugerencias.map((s) => {
+          const esNutriente = NUTRIENTES.includes(s.selloId);
+          const opciones = esNutriente ? sustitucionesPara(s.selloId, categoria) : [];
+          const pct = s.viable && s.actual > 0 ? Math.max(4, (s.objetivo / s.actual) * 100) : 0;
+          return `
+            <div class="etq-sug ${s.viable ? "" : "etq-sug--no-viable"}">
+              <div class="etq-sug-sello">${escapar(s.etiqueta)}</div>
+              <div class="etq-sug-accion ${s.viable ? "" : "etq-sug-accion--apagada"}">${escapar(s.accion)}</div>
+              ${s.viable && s.actual > 0 ? `
+                <div class="etq-sug-barra-fondo">
+                  <div class="etq-sug-barra-objetivo" style="width:${pct}%"></div>
+                </div>
+                <div class="etq-sug-nums">
+                  <span>Ahora: ${fmtN(s.actual)} ${s.unidad}</span>
+                  <span class="etq-sug-meta">Meta: ${fmtN(s.objetivo)} ${s.unidad}</span>
+                </div>` : ""}
+              ${s.bonus ? `<div class="etq-sug-bonus">↳ ${escapar(s.bonus)}</div>` : ""}
+              ${s.nota ? `<div class="etq-sug-nota">${escapar(s.nota)}</div>` : ""}
+              ${opciones.map((op) => `
+                <div class="etq-sust etq-sust--${op.nivel}">
+                  <span class="etq-sust-badge etq-sust-badge--${op.nivel}">${etiquetaNivel(op.nivel)}</span>
+                  <div class="etq-sust-titulo">${escapar(op.titulo)}</div>
+                  <div class="etq-sust-txt">${escapar(op.explicacion)}</div>
+                  ${op.como ? `<div class="etq-sust-como">${escapar(op.como)}</div>` : ""}
+                </div>`).join("")}
+              ${esNutriente && opciones.length === 0 && categoria === "otro" ? `
+                <div class="etq-sust-falta">
+                  Dinos qué tipo de receta es (pestaña Sellos, hasta abajo) para sugerencias más precisas.
+                </div>` : ""}
+            </div>`;
+        }).join("")}
       `;
     }
 
@@ -636,7 +818,7 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
         confirma en el Diario Oficial de la Federación antes de decidir.
       </div>
       <div class="m-acciones"><span></span><button class="btn-primario" id="tr-cerrar">Entendido</button></div>
-    `, { ancho: true });
+    `, { clase: "modal--ancho" });
     modal.querySelector("#tr-cerrar").addEventListener("click", cerrarModal);
   }
 
@@ -656,7 +838,7 @@ export function montarEtiquetas(contenedor, sesion, alSalir) {
         incluido su Apéndice A (Normativo).
       </div>
       <div class="m-acciones"><span></span><button class="btn-primario" id="rg-cerrar">Entendido</button></div>
-    `, { ancho: true });
+    `, { clase: "modal--ancho" });
     modal.querySelector("#rg-cerrar").addEventListener("click", cerrarModal);
   }
 }

@@ -16,6 +16,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { pesos, escapar } from "../util/formato.js";
 import { icono } from "../util/iconos.js";
 import { confirmar } from "../util/confirmar.js";
+import { abrirModal, cerrarModal } from "../util/modal.js";
 
 const CATS = {
   negocio: [
@@ -386,21 +387,9 @@ export function montarDinero(contenedor, sesion, cajaSesion, alSalir) {
     cuerpo.querySelector("#din-a-mov").addEventListener("click", () => abrirForm());
   }
 
-  // --------------------------------------------------------- Modal genérico
-  let modalActivo = null;
-  function abrirModal(html, opciones) {
-    if (modalActivo) cerrarModal();
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay" + (opciones && opciones.alto ? " modal-overlay--alto" : "");
-    overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
-    document.body.appendChild(overlay);
-    modalActivo = overlay;
-    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) cerrarModal(); });
-    return overlay.querySelector(".modal");
-  }
-  function cerrarModal() {
-    if (modalActivo) { modalActivo.remove(); modalActivo = null; }
-  }
+  // El modal era la sexta implementación repetida en el programa (nunca se
+  // le llamó con opciones.alto, así que la migración es 1:1). Ahora usa
+  // util/modal.js, que además ya soporta apilarse encima de otro modal.
 
   // ------------------------------------------------- Registrar movimiento
   function abrirForm(pre) {

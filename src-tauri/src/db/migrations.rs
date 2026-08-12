@@ -92,6 +92,16 @@ const MIGRACIONES: &[Migracion] = &[
         nombre: "014_etiquetas_exencion",
         sql: include_str!("migrations/014_etiquetas_exencion.sql"),
     },
+    Migracion {
+        version: 15,
+        nombre: "015_despensa_recetas",
+        sql: include_str!("migrations/015_despensa_recetas.sql"),
+    },
+    Migracion {
+        version: 16,
+        nombre: "016_bitacora",
+        sql: include_str!("migrations/016_bitacora.sql"),
+    },
 ];
 
 /// Asegura que exista la tabla de control de versión.

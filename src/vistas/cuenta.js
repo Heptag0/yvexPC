@@ -3,26 +3,20 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { pesos, centavos, escapar } from "../util/formato.js";
+import { abrirModal, cerrarModal } from "../util/modal.js";
 
-let modalCuenta = null;
-
+// Antes este archivo traía su propia implementación de modal con una variable
+// singleton (`modalCuenta`). Convivían tres implementaciones distintas en el
+// programa (aquí, en clientes.js y en caja.js), cada una con su propio
+// "solo puede haber uno": abrir un modal desde dentro de otro cerraba el de
+// abajo o dejaba estados imposibles. Ahora todas usan la misma pila.
+//
+// Se conservan estos nombres exportados porque otras vistas ya los importan.
 export function abrirModalCuenta(html) {
-  if (modalCuenta) cerrarModalCuenta();
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
-  document.body.appendChild(overlay);
-  modalCuenta = overlay;
-  overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) cerrarModalCuenta();
-  });
-  return overlay.querySelector(".modal");
+  return abrirModal(html);
 }
 export function cerrarModalCuenta() {
-  if (modalCuenta) {
-    modalCuenta.remove();
-    modalCuenta = null;
-  }
+  cerrarModal();
 }
 
 /// Muestra el estado de cuenta de un cliente. `onAbonar` opcional: si se pasa
@@ -136,7 +130,7 @@ export function abrirAbono(cli, sesion, cajaSesion, onListo) {
       metodo = b.dataset.met;
     })
   );
-  $("#ab-cancelar").addEventListener("click", cerrarModalCuenta);
+  $("#ab-cancelar").addEventListener("click", () => cerrarModalCuenta());
   $("#ab-ok").addEventListener("click", async () => {
     const err = $("#ab-error");
     err.textContent = "";

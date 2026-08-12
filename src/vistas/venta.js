@@ -10,6 +10,8 @@ import { tomarCotizacionPendiente } from "../util/handoff.js";
 import { montarAlertaNegativos } from "../util/alertaNegativos.js";
 import { verTicket } from "./ticket.js";
 import { lineaVida } from "../util/sidebar.js";
+import { abrirModal, cerrarModal, hayModalAbierto } from "../util/modal.js";
+import { confirmar } from "../util/confirmar.js";
 
 export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevoluciones, alIrInventarioNegativos) {
   contenedor.innerHTML = "";
@@ -159,7 +161,11 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
     await crearTicketNuevo(true);
     carrito = cot.lineas.map((l) => ({
       producto: {
-        id: l.producto_id || `cot-${l.id}`,
+        // producto_id es null en un concepto libre — se deja tal cual
+        // (antes se fabricaba un id falso "cot-<id>" que causaba
+        // "Un producto de la venta ya no existe." al cobrar: el backend
+        // intentaba buscarlo en la tabla productos y nunca existió).
+        id: l.producto_id,
         nombre: l.descripcion,
         precio_venta_centavos: l.precio_unitario_centavos,
         unidad: "pieza",
@@ -364,7 +370,10 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
   // (La confirmación de venta con F1/F2 se maneja dentro del modal de cobro.)
   function onTeclaGlobal(e) {
     // No interferir si hay un modal abierto (el modal maneja su propio teclado).
-    if (modalVenta) return;
+    // BUG corregido: quedó una referencia a `modalVenta`, la variable del
+    // modal viejo que se eliminó al migrar a util/modal.js — rompía CUALQUIER
+    // atajo de teclado en Venta (F10, F12, Supr) con un ReferenceError.
+    if (hayModalAbierto()) return;
     if (e.key === "F10") {
       e.preventDefault();
       abrirBuscadorNombre();
@@ -1077,25 +1086,40 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
 
   // Buscador/escáner del cliente de lealtad. Acepta el QR escaneado
   // ("YVEXPOS:YV-XXXXXX"), el código pelón, o busca por nombre/teléfono/correo.
+  // Antes montaba su propio overlay a mano ("no usa abrirModal porque
+  // cerraría el modal de cobro que está debajo" — el mismo bug que en
+  // inventario.js). util/modal.js ya apila de verdad, así que es un modal
+  // normal, como cualquier otro.
   function elegirClienteLealtad() {
     return new Promise((resolve) => {
-      const overlay = document.createElement("div");
-      overlay.className = "modal-overlay modal-overlay--alto";
-      overlay.innerHTML = `
-        <div class="modal modal--chico" role="dialog" aria-modal="true">
-          <h2>Cliente para puntos</h2>
-          <input id="sl-buscar" class="inv-buscar" style="width:100%;margin-bottom:12px"
-                 placeholder="Escanea su código o busca por nombre…" autocomplete="off" />
-          <div class="sc-lista" id="sl-lista"></div>
-          <p class="m-sub" id="sl-vacio" hidden>Sin clientes. Regístralos en Lealtad o Clientes.</p>
-          <div class="m-acciones"><span></span><button class="btn-sec" id="sl-cancelar">Cancelar</button></div>
-        </div>`;
-      document.body.appendChild(overlay);
-      const q = (s) => overlay.querySelector(s);
+      // cerrarAlTocarFuera/cerrarConEscape en false: como esta función
+      // devuelve una promesa, el cierre tiene que pasar SIEMPRE por cerrar()
+      // para resolverla — si el clic-afuera lo manejara el modal por su
+      // cuenta, la promesa se quedaría colgada para siempre.
+      const modal = abrirModal(
+        `
+        <h2>Cliente para puntos</h2>
+        <input id="sl-buscar" class="inv-buscar" style="width:100%;margin-bottom:12px"
+               placeholder="Escanea su código o busca por nombre…" autocomplete="off" />
+        <div class="sc-lista" id="sl-lista"></div>
+        <p class="m-sub" id="sl-vacio" hidden>Sin clientes. Regístralos en Lealtad o Clientes.</p>
+        <div class="m-acciones"><span></span><button class="btn-sec" id="sl-cancelar">Cancelar</button></div>
+      `,
+        { cerrarAlTocarFuera: false, cerrarConEscape: false }
+      );
+      const q = (s) => modal.querySelector(s);
       function cerrar(val) {
-        overlay.remove();
+        document.removeEventListener("keydown", onEscape, true);
+        cerrarModal(modal);
         resolve(val || null);
       }
+      function onEscape(e) {
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cerrar(null); }
+      }
+      document.addEventListener("keydown", onEscape, true);
+      modal.parentElement.addEventListener("mousedown", (e) => {
+        if (e.target === modal.parentElement) cerrar(null);
+      });
       async function buscar(texto) {
         let lista = [];
         try {
@@ -1148,9 +1172,6 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
         t = setTimeout(() => buscar(e.target.value.trim()), 150);
       });
       q("#sl-cancelar").addEventListener("click", () => cerrar(null));
-      overlay.addEventListener("mousedown", (e) => {
-        if (e.target === overlay) cerrar(null);
-      });
       buscar("");
       setTimeout(() => q("#sl-buscar").focus(), 40);
     });
@@ -1398,11 +1419,23 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
         descuento_global_centavos: canje ? 0 : desc,
         cliente_id: (clienteCredito ? clienteCredito.id : null) ?? (clienteLealtad ? clienteLealtad.id : null),
         canje: canje ? { puntos_solicitados: canje.puntos_solicitados } : null,
-        lineas: carrito.map((l) => ({
-          producto_id: l.producto.id,
-          cantidad: l.cantidad,
-          descuento_linea_centavos: l.descuento_centavos,
-        })),
+        lineas: carrito.map((l) => {
+          const linea = {
+            producto_id: l.producto.id, // null = concepto libre
+            cantidad: l.cantidad,
+            descuento_linea_centavos: l.descuento_centavos,
+          };
+          // Concepto libre: el backend no tiene producto real del cual leer
+          // precio/descripción frescos, así que aquí sí se los mandamos
+          // (son los mismos datos que ya se le mostraron al cliente en la
+          // cotización). Para líneas de producto real no se incluyen —
+          // Rust siempre recalcula esas desde la base, nunca del frontend.
+          if (l.producto.id == null) {
+            linea.descripcion = l.producto.nombre;
+            linea.precio_unitario_centavos = l.producto.precio_venta_centavos;
+          }
+          return linea;
+        }),
         pagos: pagosFinal.map((p) => ({
           metodo: p.metodo,
           monto_centavos: p.monto_centavos,
@@ -1459,18 +1492,19 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
     // Sub-modal para elegir cliente (devuelve promesa con el cliente o null).
     function seleccionarCliente() {
       return new Promise((resolve) => {
-        const overlay = document.createElement("div");
-        overlay.className = "modal-overlay modal-overlay--alto";
-        overlay.innerHTML = `
-          <div class="modal modal--chico" role="dialog" aria-modal="true">
-            <h2>Elegir cliente</h2>
-            <input id="sc-buscar" class="inv-buscar" style="width:100%;margin-bottom:12px" placeholder="Buscar cliente…" autocomplete="off" />
-            <div class="sc-lista" id="sc-lista"></div>
-            <p class="m-sub" id="sc-vacio" hidden>Sin clientes. Créalos en el apartado Clientes.</p>
-            <div class="m-acciones"><span></span><button class="btn-sec" id="sc-cancelar">Cancelar</button></div>
-          </div>`;
-        document.body.appendChild(overlay);
-        const q = (s) => overlay.querySelector(s);
+        // Mismo criterio que elegirClienteLealtad: cierre siempre por
+        // cerrar(), para que la promesa nunca se quede colgada.
+        const modal = abrirModal(
+          `
+          <h2>Elegir cliente</h2>
+          <input id="sc-buscar" class="inv-buscar" style="width:100%;margin-bottom:12px" placeholder="Buscar cliente…" autocomplete="off" />
+          <div class="sc-lista" id="sc-lista"></div>
+          <p class="m-sub" id="sc-vacio" hidden>Sin clientes. Créalos en el apartado Clientes.</p>
+          <div class="m-acciones"><span></span><button class="btn-sec" id="sc-cancelar">Cancelar</button></div>
+        `,
+          { cerrarAlTocarFuera: false, cerrarConEscape: false }
+        );
+        const q = (s) => modal.querySelector(s);
 
         async function buscar(texto) {
           let lista = [];
@@ -1506,18 +1540,23 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
         }
 
         function cerrar(val) {
-          overlay.remove();
+          document.removeEventListener("keydown", onEscape, true);
+          cerrarModal(modal);
           resolve(val || null);
         }
+        function onEscape(e) {
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cerrar(null); }
+        }
+        document.addEventListener("keydown", onEscape, true);
+        modal.parentElement.addEventListener("mousedown", (e) => {
+          if (e.target === modal.parentElement) cerrar(null);
+        });
         let t;
         q("#sc-buscar").addEventListener("input", (e) => {
           clearTimeout(t);
           t = setTimeout(() => buscar(e.target.value.trim()), 150);
         });
         q("#sc-cancelar").addEventListener("click", () => cerrar(null));
-        overlay.addEventListener("mousedown", (e) => {
-          if (e.target === overlay) cerrar(null);
-        });
         setTimeout(() => q("#sc-buscar").focus(), 50);
         buscar("");
       });
@@ -1616,63 +1655,9 @@ export function montarVenta(contenedor, sesion, cajaSesion, alSalir, alAbrirDevo
   }
 }
 
-// --- Modales (locales a esta vista) ---
-let modalVenta = null;
-function abrirModal(html) {
-  if (modalVenta) cerrarModal();
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-  overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
-  document.body.appendChild(overlay);
-  modalVenta = overlay;
-  overlay.addEventListener("mousedown", (e) => {
-    if (e.target === overlay) cerrarModal();
-  });
-  return overlay.querySelector(".modal");
-}
-function cerrarModal() {
-  if (modalVenta) {
-    modalVenta.remove();
-    modalVenta = null;
-  }
-}
-
-// Modal de confirmación propio (reemplaza al confirm() nativo, que no funciona
-// en este entorno de Tauri). Devuelve una promesa que resuelve true/false.
-// Usa su propio overlay para no interferir con otros modales abiertos.
-function confirmar(mensaje, opciones = {}) {
-  const titulo = opciones.titulo || "Confirmar";
-  const textoOk = opciones.ok || "Aceptar";
-  const textoCancelar = opciones.cancelar || "Cancelar";
-  const peligro = opciones.peligro === true;
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay modal-overlay--confirm";
-    overlay.innerHTML = `
-      <div class="modal modal--confirm" role="dialog" aria-modal="true">
-        <h2 class="confirm-titulo">${escapar(titulo)}</h2>
-        <p class="confirm-msg">${escapar(mensaje)}</p>
-        <div class="confirm-acciones">
-          <button class="btn-sec" data-conf="0">${escapar(textoCancelar)}</button>
-          <button class="${peligro ? "btn-peligro" : "btn-primario"}" data-conf="1">${escapar(textoOk)}</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-
-    const cerrar = (valor) => {
-      overlay.remove();
-      document.removeEventListener("keydown", onTecla);
-      resolve(valor);
-    };
-    function onTecla(e) {
-      if (e.key === "Escape") { e.preventDefault(); cerrar(false); }
-      else if (e.key === "Enter") { e.preventDefault(); cerrar(true); }
-    }
-    document.addEventListener("keydown", onTecla);
-    overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) cerrar(false); });
-    overlay.querySelector('[data-conf="0"]').addEventListener("click", () => cerrar(false));
-    overlay.querySelector('[data-conf="1"]').addEventListener("click", () => cerrar(true));
-    // Foco en el botón de confirmar para poder usar Enter.
-    setTimeout(() => overlay.querySelector('[data-conf="1"]').focus(), 40);
-  });
-}
+// Antes: modal y confirmar() propios de esta vista (la octava y novena copia
+// del mismo patrón repetido en el programa). Como Venta es donde más se
+// abre un modal DESDE otro (elegir cliente durante el cobro, buscar cliente
+// de lealtad), su propio "solo puede haber uno" chocaba constantemente —
+// era la causa de que "Cobrar" se cerrara solo. Ahora usa util/modal.js
+// (que sí apila) y util/confirmar.js.

@@ -8,6 +8,7 @@
 // Login / onboarding / abrir-caja siguen a pantalla completa (sin shell).
 
 import { invoke } from "@tauri-apps/api/core";
+import { activarPantallaCompleta } from "./util/pantalla_completa.js";
 import { montarOnboarding } from "./vistas/onboarding.js";
 import { montarLogin } from "./vistas/login.js";
 import { montarInventario } from "./vistas/inventario.js";
@@ -29,8 +30,10 @@ import { montarShell, badgePedidos } from "./util/sidebar.js";
 import { montarInicio } from "./vistas/inicio.js";
 import { aplicarApariencia } from "./util/apariencia.js";
 import { revisarVerificacion } from "./util/verificacion_banner.js";
+import { revisarActualizacion } from "./util/actualizaciones.js";
 import { montarDinero } from "./vistas/dinero.js";
 import { montarEtiquetas } from "./vistas/etiquetas.js";
+import { montarRecetas } from "./vistas/recetas.js";
 
 const app = document.querySelector("#app");
 let sesion = null;
@@ -38,6 +41,12 @@ let cajaSesion = null;
 let shell = null;
 
 async function arrancar() {
+  // Pantalla completa desde el primer pixel — incluido el login. Antes solo
+  // se activaba desde el botón del shell, así que el login (que no tiene
+  // shell) se quedaba siempre en ventana normal. Sin esperar: no hay razón
+  // para retrasar el resto del arranque por la animación de entrada.
+  activarPantallaCompleta();
+
   // La apariencia del dueño aplica desde el primer pixel (incluye el login).
   // Si la config aún no existe (primer arranque), aplica el predeterminado.
   try {
@@ -62,6 +71,10 @@ function irALogin() {
   cajaSesion = null;
   shell = null;
   clearTimeout(badgeTimer); // sin sesión, sin polling del badge
+  // Limpia la sesión REAL guardada en Rust — sin esto, un comando sensible
+  // llamado en el hueco entre "salir" y el siguiente login todavía vería la
+  // sesión anterior como activa. No bloquea la navegación si falla.
+  invoke("sesion_cerrar").catch(() => {});
   // Restaurar el centrado original de #app (el shell lo neutraliza).
   app.style.cssText = "";
   montarLogin(app, async (usuario) => {
@@ -92,9 +105,13 @@ function asegurarShell() {
   shell = montarShell(app, sesion, {
     alNavegar: (mod) => (mod === "inicio" ? irAMenu() : abrirModulo(mod)),
     alSalir: irALogin,
+    // La barra de estado muestra desde qué hora está abierto el turno.
+    cajaSesion,
   });
   // Aviso suave de verificación de correo (no bloquea; solo si aplica).
   revisarVerificacion(app);
+  // Aviso suave de actualización disponible (no bloquea; el dueño decide cuándo).
+  revisarActualizacion();
   // Badge de pedidos web: arranca el ciclo (cada ~60 s), tolerante a offline.
   refrescarBadgePedidos();
   return shell;
@@ -167,6 +184,8 @@ function abrirModulo(mod) {
     montarDinero(raiz, sesion, cajaSesion, irAMenu);
   } else if (mod === "etiquetas") {
     montarEtiquetas(raiz, sesion, irAMenu);
+  } else if (mod === "recetas") {
+    montarRecetas(raiz, sesion, irAMenu);
   } else {
     raiz.innerHTML =
       '<div class="estado estado--ok" style="max-width:520px">' +

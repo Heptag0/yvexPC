@@ -22,10 +22,21 @@ use super::comun::{ahora, encolar_sync, nuevo_id};
 /// contra el producto real; no se confía ciegamente en el frontend para montos.
 #[derive(Debug, Deserialize)]
 pub struct LineaCarrito {
-    pub producto_id: String,
+    /// None = concepto libre (línea sin producto real de catálogo, viene
+    /// de una cotización con "+ Concepto libre"). Para estas líneas SÍ se
+    /// confía en `descripcion`/`precio_unitario_centavos` del frontend,
+    /// porque no hay fila en `productos` de la cual leerlos frescos.
+    pub producto_id: Option<String>,
     pub cantidad: f64,
     /// Descuento por línea en centavos (ya calculado por el frontend; se valida).
     pub descuento_linea_centavos: i64,
+    /// Solo se usan cuando producto_id es None. Se ignoran para líneas de
+    /// producto real (su precio/descripción siempre se leen frescos de la
+    /// base, nunca del frontend).
+    #[serde(default)]
+    pub descripcion: Option<String>,
+    #[serde(default)]
+    pub precio_unitario_centavos: Option<i64>,
 }
 
 /// Un pago de la venta (puede haber varios = pago mixto).
@@ -147,7 +158,7 @@ pub fn cobrar(
     // 2. Recalcular cada línea desde el producto real. Cuadrar a la fuente.
     let mut subtotal_centavos: i64 = 0;
     struct LineaCalculada {
-        producto_id: String,
+        producto_id: Option<String>,
         descripcion: String,
         cantidad: f64,
         precio_unitario_centavos: i64,
@@ -166,35 +177,82 @@ pub fn cobrar(
         if l.cantidad <= 0.0 {
             return Err("La cantidad de cada línea debe ser mayor a cero.".into());
         }
-        let prod = leer_producto(&tx, &l.producto_id)?;
 
-        // Mayoreo automático: si cantidad >= cantidad_mayoreo, usa precio mayoreo.
-        let precio_unitario = match (prod.precio_mayoreo_centavos, prod.cantidad_mayoreo) {
-            (Some(pm), Some(cm)) if cm > 0 && l.cantidad >= cm as f64 => pm,
-            _ => prod.precio_venta_centavos,
-        };
+        match &l.producto_id {
+            Some(pid) => {
+                let prod = leer_producto(&tx, pid)?;
 
-        // Importe de línea = precio * cantidad, redondeado a centavo entero.
-        let bruto = (precio_unitario as f64 * l.cantidad).round() as i64;
-        let desc = l.descuento_linea_centavos.max(0).min(bruto); // no más que el bruto
-        let total_linea = bruto - desc;
+                // Mayoreo automático: si cantidad >= cantidad_mayoreo, usa precio mayoreo.
+                let precio_unitario = match (prod.precio_mayoreo_centavos, prod.cantidad_mayoreo) {
+                    (Some(pm), Some(cm)) if cm > 0 && l.cantidad >= cm as f64 => pm,
+                    _ => prod.precio_venta_centavos,
+                };
 
-        subtotal_centavos += total_linea;
+                // Importe de línea = precio * cantidad, redondeado a centavo entero.
+                let bruto = (precio_unitario as f64 * l.cantidad).round() as i64;
+                let desc = l.descuento_linea_centavos.max(0).min(bruto); // no más que el bruto
+                let total_linea = bruto - desc;
 
-        calculadas.push(LineaCalculada {
-            producto_id: l.producto_id.clone(),
-            descripcion: prod.nombre.clone(),
-            cantidad: l.cantidad,
-            precio_unitario_centavos: precio_unitario,
-            costo_unitario_centavos: prod.costo_centavos,
-            descuento_linea_centavos: desc,
-            total_linea_centavos: total_linea,
-            tasa_impuesto_base: prod.iva_tasa,
-            controla_stock: prod.controla_stock,
-            stock_actual: prod.stock,
-            unidad: prod.unidad.clone(),
-            es_kit: prod.es_kit,
-        });
+                subtotal_centavos += total_linea;
+
+                calculadas.push(LineaCalculada {
+                    producto_id: Some(pid.clone()),
+                    descripcion: prod.nombre.clone(),
+                    cantidad: l.cantidad,
+                    precio_unitario_centavos: precio_unitario,
+                    costo_unitario_centavos: prod.costo_centavos,
+                    descuento_linea_centavos: desc,
+                    total_linea_centavos: total_linea,
+                    tasa_impuesto_base: prod.iva_tasa,
+                    controla_stock: prod.controla_stock,
+                    stock_actual: prod.stock,
+                    unidad: prod.unidad.clone(),
+                    es_kit: prod.es_kit,
+                });
+            }
+            None => {
+                // Concepto libre: no hay producto real que leer. El precio y
+                // la descripción vienen del frontend — son los mismos datos
+                // que ya se le mostraron al cliente en la cotización. No hay
+                // costo (no es mercancía) ni stock que tocar.
+                //
+                // Tasa de impuesto = 0 a propósito: se asume que el monto
+                // del concepto libre es lo que ya se le cotizó al cliente;
+                // agregarle IVA aquí encima haría que la venta cobrara más
+                // de lo prometido en la cotización. Si tu negocio necesita
+                // que los conceptos libres SÍ lleven impuesto agregado,
+                // este es el valor a cambiar (avísame y lo ajustamos).
+                let descripcion = l.descripcion.as_deref().unwrap_or("").trim().to_string();
+                if descripcion.is_empty() {
+                    return Err("Un concepto libre necesita una descripción.".into());
+                }
+                let precio_unitario = l.precio_unitario_centavos.unwrap_or(0);
+                if precio_unitario < 0 {
+                    return Err("El precio de un concepto libre no puede ser negativo.".into());
+                }
+
+                let bruto = (precio_unitario as f64 * l.cantidad).round() as i64;
+                let desc = l.descuento_linea_centavos.max(0).min(bruto);
+                let total_linea = bruto - desc;
+
+                subtotal_centavos += total_linea;
+
+                calculadas.push(LineaCalculada {
+                    producto_id: None,
+                    descripcion,
+                    cantidad: l.cantidad,
+                    precio_unitario_centavos: precio_unitario,
+                    costo_unitario_centavos: 0,
+                    descuento_linea_centavos: desc,
+                    total_linea_centavos: total_linea,
+                    tasa_impuesto_base: 0,
+                    controla_stock: false,
+                    stock_actual: 0.0,
+                    unidad: "pieza".to_string(),
+                    es_kit: false,
+                });
+            }
+        }
     }
 
     // 3. Descuento global, acotado al subtotal. Si hay canje de puntos, se
@@ -349,9 +407,18 @@ pub fn cobrar(
 
         // Descontar stock.
         if lc.es_kit {
+            // producto_id siempre es Some aquí: es_kit solo puede ser true en
+            // líneas de producto real (la rama de concepto libre fija es_kit
+            // en false a propósito). Si esto llegara a fallar, es un bug de
+            // construcción arriba, no un caso normal — por eso el error es
+            // "interno" y no un mensaje pensado para el cajero.
+            let pid = lc
+                .producto_id
+                .as_deref()
+                .ok_or_else(|| "Error interno: línea de kit sin producto_id.".to_string())?;
             // Un kit descuenta el stock de sus COMPONENTES (no el suyo).
             // cantidad_componente_a_descontar = cantidad_en_kit × cantidad_kits_vendidos.
-            let componentes = super::kits::componentes_para_descuento(&tx, &lc.producto_id)?;
+            let componentes = super::kits::componentes_para_descuento(&tx, pid)?;
             for comp in &componentes {
                 if !comp.controla_stock {
                     continue;
@@ -371,17 +438,23 @@ pub fn cobrar(
                     .map_err(|e| format!("error al encolar stock de componente: {e}"))?;
             }
         } else if lc.controla_stock {
+            // Mismo razonamiento que arriba: controla_stock solo es true en
+            // líneas de producto real.
+            let pid = lc
+                .producto_id
+                .as_deref()
+                .ok_or_else(|| "Error interno: línea con stock sin producto_id.".to_string())?;
             let nuevo_stock = lc.stock_actual - lc.cantidad;
             tx.execute(
                 "UPDATE productos SET stock = ?2, actualizado_en = ?3 WHERE id = ?1",
-                rusqlite::params![lc.producto_id, nuevo_stock, ts],
+                rusqlite::params![pid, nuevo_stock, ts],
             )
             .map_err(|e| format!("error al descontar stock: {e}"))?;
 
             let payload_prod = serde_json::json!({
-                "id": lc.producto_id, "stock": nuevo_stock, "actualizado_en": ts,
+                "id": pid, "stock": nuevo_stock, "actualizado_en": ts,
             });
-            encolar_sync(&tx, "productos", &lc.producto_id, "update", &payload_prod)
+            encolar_sync(&tx, "productos", pid, "update", &payload_prod)
                 .map_err(|e| format!("error al encolar stock: {e}"))?;
         }
     }

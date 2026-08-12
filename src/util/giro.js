@@ -75,6 +75,7 @@ export const GIROS = [
       "El ticket promedio del día te dice si van por el puro café o se animan con el pan.",
       "Los productos más vendidos se aprenden solos y aparecen primero al cobrar.",
       "Vende con o sin internet: si se va la señal a media mañana, la caja no se detiene.",
+      "Calcula el costo real de cada pieza que horneas —desde el azúcar hasta el queso crema— y sabrás en cuánto conviene venderla, con Recetas.",
     ],
   },
   {
@@ -93,6 +94,7 @@ export const GIROS = [
       "El corte de turno cuadra perfecto con el servicio de comida y el de cena.",
       "Separar bebidas de platos fuertes en departamentos te muestra tu margen real.",
       "Vende con o sin internet: si se va la señal a media comida, la caja no se detiene.",
+      "Con Recetas armas el costo real de cada platillo, ingrediente por ingrediente, y sabes qué margen te deja de verdad.",
     ],
   },
   {
